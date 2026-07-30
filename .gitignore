@@ -1,0 +1,71 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.jks
+*.keystore
+google-services.json
+GoogleService-Info.plist
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+dist/
+*.egg-info/
+
+# Node and Next.js
+node_modules/
+.next/
+out/
+.turbo/
+coverage/
+*.tsbuildinfo
+pnpm-debug.log*
+npm-debug.log*
+
+# Flutter and Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+**/android/.gradle/
+**/android/local.properties
+**/ios/Flutter/ephemeral/
+**/macos/Flutter/ephemeral/
+
+# IDE and operating system
+.idea/
+.vscode/
+*.iml
+*.swp
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local data, uploads, logs, and caches
+data/
+uploads/
+logs/
+*.log
+.cache/
+.tmp/
+tmp/
+dev-caches/
+
+# Generated reports and release artifacts
+reports/generated/
+artifacts/
+*.apk
+*.aab
+*.ipa
+
