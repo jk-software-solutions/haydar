@@ -33,7 +33,7 @@ separate role-specific mobile application will be introduced.
 | Days | Deliverable | Status |
 | --- | --- | --- |
 | 1 | Audit, private repository, architecture and planning documents | Completed |
-| 2-3 | Monorepo, native database, FastAPI, Flutter, Next.js, CI foundations | Not started |
+| 2-3 | Monorepo, native database, FastAPI, Flutter, Next.js, CI foundations | In progress |
 | 3-7 | Design/localization, base schema, auth, tenancy, RBAC, devices | Not started |
 | 8-10 | Branches, departments, transfers, shifts, assignments | Not started |
 | 11-14 | GPS/QR attendance, device checks, checkout and history | Not started |
@@ -58,6 +58,18 @@ The first stable milestone contains:
 
 Day 2 work may continue into Day 3. A component remains **In progress** until
 its checks pass; time elapsed never changes a status to **Completed**.
+
+### Foundation checkpoint evidence
+
+| Component | Status | Evidence / remaining work |
+| --- | --- | --- |
+| Python 3.12 | Completed | Python 3.12.10 installed at `F:\tools\Python312` |
+| PostgreSQL | In progress | Native 18.4 service verified present; authenticated setup still required |
+| FastAPI code foundation | Completed | Ruff format/lint, strict mypy, and 3 pytest health tests pass |
+| Alembic database execution | In progress | Configuration exists; real migration waits for isolated database setup |
+| Flutter foundation | Not started | Scaffold and checks pending |
+| Next.js foundation | Not started | Scaffold and checks pending |
+| CI | Not started | Workflow pending |
 
 ## Checkpoint workflow
 
