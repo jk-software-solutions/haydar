@@ -1,0 +1,10 @@
+{
+  "@@locale": "en",
+  "appName": "HADIR",
+  "appNameArabic": "حاضر",
+  "foundationMessage": "Attendance, clearly managed",
+  "foundationDescription": "Secure attendance and workforce management for every role.",
+  "arabicLanguage": "العربية",
+  "englishLanguage": "English",
+  "foundationStatus": "Foundation setup in progress"
+}

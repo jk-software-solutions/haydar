@@ -67,9 +67,14 @@ its checks pass; time elapsed never changes a status to **Completed**.
 | PostgreSQL | In progress | Native 18.4 service verified present; authenticated setup still required |
 | FastAPI code foundation | Completed | Ruff format/lint, strict mypy, and 3 pytest health tests pass |
 | Alembic database execution | In progress | Configuration exists; real migration waits for isolated database setup |
-| Flutter foundation | Not started | Scaffold and checks pending |
+| Flutter foundation | Completed | One app, `com.jawadsites.haydar`; analyze and 2 RTL/LTR tests pass; debug APK built |
 | Next.js foundation | Not started | Scaffold and checks pending |
 | CI | Not started | Workflow pending |
+
+Flutter runtime/plugin testing remains scheduled for a physical USB-connected
+Android device. No emulator was created or started. The foundation completion
+records source, localization, static analysis, widget tests, identifiers, and a
+successful debug APK build; it does not claim physical-device verification.
 
 ## Checkpoint workflow
 

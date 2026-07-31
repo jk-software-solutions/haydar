@@ -42,6 +42,7 @@ build/
 **/android/local.properties
 **/ios/Flutter/ephemeral/
 **/macos/Flutter/ephemeral/
+apps/mobile/lib/l10n/generated/
 
 # IDE and operating system
 .idea/
