@@ -22,7 +22,7 @@ function New-HaydarSecret {
     finally {
         $Generator.Dispose()
     }
-    return [Convert]::ToHexString($Bytes).ToLowerInvariant()
+    return [BitConverter]::ToString($Bytes).Replace('-', '').ToLowerInvariant()
 }
 
 function ConvertTo-PlainText {
