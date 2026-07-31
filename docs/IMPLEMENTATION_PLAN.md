@@ -69,7 +69,7 @@ its checks pass; time elapsed never changes a status to **Completed**.
 | Alembic database execution | In progress | Configuration exists; real migration waits for isolated database setup |
 | Flutter foundation | Completed | One app, `com.jawadsites.haydar`; analyze and 2 RTL/LTR tests pass; debug APK built |
 | Next.js foundation | Completed | Next 16 locale routes; lint/typecheck/build pass; 8 Vitest tests pass |
-| CI | In progress | API, mobile, and web workflow plus sequential local verification scripts added; first remote run pending |
+| CI | Blocked | Complete workflow and local scripts pass `actionlint`/PowerShell checks; GitHub returns `startup_failure` before even a run-only probe executes |
 
 Flutter runtime/plugin testing remains scheduled for a physical USB-connected
 Android device. No emulator was created or started. The foundation completion
@@ -92,6 +92,14 @@ During small code-only checkpoints, the explicit `-SkipMobileBuild` or
 `-SkipWebBuild` switches may avoid repeating an unchanged expensive build, but
 both builds remain mandatory for milestone acceptance. Run
 `./scripts/check-staged.ps1` after staging and before every commit.
+
+GitHub Actions is enabled for the private repository and permits all actions,
+but runs `30611164233`, `30611427989`, and `30611512200` each ended as
+`startup_failure` with no job or log. The last probe contained only a shell
+`echo`, which rules out action pins and project dependencies. The complete
+workflow remains committed and locally passes `actionlint` 1.7.12; GitHub's
+repository/account runner-start restriction must be resolved before CI can be
+marked completed.
 
 Promotion from `develop` to `main` requires a tested milestone and green
 relevant CI. Mobile milestones additionally require a physical-device check
