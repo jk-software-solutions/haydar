@@ -64,9 +64,9 @@ its checks pass; time elapsed never changes a status to **Completed**.
 | Component | Status | Evidence / remaining work |
 | --- | --- | --- |
 | Python 3.12 | Completed | Python 3.12.10 installed at `F:\tools\Python312` |
-| PostgreSQL | In progress | Native 18.4 service verified present; secure setup helper now creates `haydar_dev`, `haydar_test`, `haydar_app`, `haydar_migrator`, writes ignored `.env`, and verifies role access after the local admin password is entered |
+| PostgreSQL | Completed | Native PostgreSQL 18.4 verified; `haydar_dev`, `haydar_test`, `haydar_app`, and `haydar_migrator` created; ignored root `.env` created; app and migrator roles connect to dev/test without printing secrets |
 | FastAPI code foundation | Completed | Ruff format/lint, strict mypy, and 3 pytest health tests pass |
-| Alembic database execution | In progress | Configuration reads the root `.env`; real migration waits for isolated database setup |
+| Alembic database execution | Completed | Configuration reads the root `.env`; `alembic current` and `alembic upgrade head` connect to PostgreSQL successfully |
 | Flutter foundation | Completed | One app, `com.jawadsites.haydar`; analyze and 3 tests pass; debug APK built; startup shell shows an honest ready state and a real local API/database readiness probe |
 | Next.js foundation | Completed | Next 16 locale routes; lint/typecheck/build pass; 8 Vitest tests pass |
 | CI | Blocked | Complete workflow and local scripts pass `actionlint`/PowerShell checks; GitHub returns `startup_failure` before even a run-only probe executes |
@@ -75,6 +75,8 @@ Flutter runtime/plugin testing remains scheduled for a physical USB-connected
 Android device. No emulator was created or started. The foundation completion
 records source, localization, static analysis, widget tests, identifiers, and a
 successful debug APK build; it does not claim physical-device verification.
+The API readiness endpoint has been smoke-tested through one local Uvicorn
+worker against PostgreSQL and returned `{"status":"ok","service":"haydar-api"}`.
 
 ## Checkpoint workflow
 
