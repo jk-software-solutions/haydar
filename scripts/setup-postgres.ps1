@@ -15,7 +15,13 @@ $Psql = 'C:\Program Files\PostgreSQL\18\bin\psql.exe'
 
 function New-HaydarSecret {
     $Bytes = [byte[]]::new(32)
-    [Security.Cryptography.RandomNumberGenerator]::Fill($Bytes)
+    $Generator = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $Generator.GetBytes($Bytes)
+    }
+    finally {
+        $Generator.Dispose()
+    }
     return [Convert]::ToHexString($Bytes).ToLowerInvariant()
 }
 
