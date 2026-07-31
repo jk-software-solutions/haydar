@@ -10,6 +10,8 @@ void main() {
 
     expect(find.text('HADIR | حاضر'), findsOneWidget);
     expect(find.text('حضور أوضح، وإدارة أسهل'), findsOneWidget);
+    expect(find.text('الواجهة الأساسية جاهزة'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(
       Directionality.of(tester.element(find.text('HADIR | حاضر'))),
       TextDirection.rtl,

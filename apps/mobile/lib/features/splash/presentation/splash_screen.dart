@@ -51,9 +51,9 @@ class SplashScreen extends ConsumerWidget {
                   Semantics(
                     liveRegion: true,
                     child: Chip(
-                      avatar: const SizedBox.square(
-                        dimension: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                      avatar: Icon(
+                        Icons.check_circle_outline_rounded,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                       label: Text(l10n.foundationStatus),
                     ),

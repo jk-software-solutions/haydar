@@ -67,7 +67,7 @@ its checks pass; time elapsed never changes a status to **Completed**.
 | PostgreSQL | In progress | Native 18.4 service verified present; authenticated setup still required |
 | FastAPI code foundation | Completed | Ruff format/lint, strict mypy, and 3 pytest health tests pass |
 | Alembic database execution | In progress | Configuration exists; real migration waits for isolated database setup |
-| Flutter foundation | Completed | One app, `com.jawadsites.haydar`; analyze and 2 RTL/LTR tests pass; debug APK built |
+| Flutter foundation | Completed | One app, `com.jawadsites.haydar`; analyze and 3 tests pass; debug APK built; startup shell shows an honest ready state instead of an indefinite loader |
 | Next.js foundation | Completed | Next 16 locale routes; lint/typecheck/build pass; 8 Vitest tests pass |
 | CI | Blocked | Complete workflow and local scripts pass `actionlint`/PowerShell checks; GitHub returns `startup_failure` before even a run-only probe executes |
 
