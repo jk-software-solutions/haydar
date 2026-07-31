@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/localization/locale_controller.dart';
 import '../../../app/theme/app_theme.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/api_health.dart';
 import '../../../l10n/generated/app_localizations.dart';
 
 class SplashScreen extends ConsumerWidget {
@@ -12,6 +14,7 @@ class SplashScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
+    final apiHealth = ref.watch(apiHealthProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -50,12 +53,24 @@ class SplashScreen extends ConsumerWidget {
                   const SizedBox(height: 24),
                   Semantics(
                     liveRegion: true,
-                    child: Chip(
-                      avatar: Icon(
-                        Icons.check_circle_outline_rounded,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      label: Text(l10n.foundationStatus),
+                    child: Column(
+                      children: <Widget>[
+                        Chip(
+                          avatar: Icon(
+                            Icons.check_circle_outline_rounded,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          label: Text(l10n.foundationStatus),
+                        ),
+                        const SizedBox(height: 8),
+                        _ApiStatusChip(apiHealth: apiHealth),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${l10n.apiEndpoint}: $apiBaseUrl',
+                          textAlign: TextAlign.center,
+                          style: textTheme.bodySmall,
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -84,6 +99,45 @@ class SplashScreen extends ConsumerWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ApiStatusChip extends StatelessWidget {
+  const _ApiStatusChip({required this.apiHealth});
+
+  final AsyncValue<ApiHealth> apiHealth;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return apiHealth.when(
+      loading: () => Chip(
+        avatar: SizedBox.square(
+          dimension: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: colorScheme.primary,
+          ),
+        ),
+        label: Text(l10n.apiChecking),
+      ),
+      error: (_, _) => Chip(
+        avatar: Icon(
+          Icons.cloud_off_outlined,
+          color: colorScheme.error,
+        ),
+        label: Text(l10n.apiUnavailable),
+      ),
+      data: (_) => Chip(
+        avatar: Icon(
+          Icons.cloud_done_outlined,
+          color: colorScheme.primary,
+        ),
+        label: Text(l10n.apiReady),
       ),
     );
   }

@@ -48,6 +48,32 @@ checkpoint, run `.\scripts\check-staged.ps1` before committing. GitHub Actions
 repeats all quality gates from clean Linux runners and builds a debug APK
 without starting an emulator.
 
+## Local phone testing
+
+Set up PostgreSQL once from a visible PowerShell window:
+
+```powershell
+.\scripts\setup-postgres.ps1
+```
+
+Then run the API on your laptop's LAN address:
+
+```powershell
+.\scripts\start-api-local.ps1
+```
+
+With a real Android phone connected by USB and on the same network, start the
+Flutter app in another PowerShell window:
+
+```powershell
+.\scripts\run-mobile-device.ps1
+```
+
+The app shell calls `/api/v1/health/ready`, so a green local API status means
+the phone reached FastAPI and FastAPI reached PostgreSQL. If the phone cannot
+connect, check Windows Firewall for inbound access to port `8000` on the
+private network.
+
 ## Documentation
 
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md)

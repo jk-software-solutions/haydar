@@ -64,10 +64,10 @@ its checks pass; time elapsed never changes a status to **Completed**.
 | Component | Status | Evidence / remaining work |
 | --- | --- | --- |
 | Python 3.12 | Completed | Python 3.12.10 installed at `F:\tools\Python312` |
-| PostgreSQL | In progress | Native 18.4 service verified present; authenticated setup still required |
+| PostgreSQL | In progress | Native 18.4 service verified present; secure setup helper now creates `haydar_dev`, `haydar_test`, `haydar_app`, `haydar_migrator`, writes ignored `.env`, and verifies role access after the local admin password is entered |
 | FastAPI code foundation | Completed | Ruff format/lint, strict mypy, and 3 pytest health tests pass |
-| Alembic database execution | In progress | Configuration exists; real migration waits for isolated database setup |
-| Flutter foundation | Completed | One app, `com.jawadsites.haydar`; analyze and 3 tests pass; debug APK built; startup shell shows an honest ready state instead of an indefinite loader |
+| Alembic database execution | In progress | Configuration reads the root `.env`; real migration waits for isolated database setup |
+| Flutter foundation | Completed | One app, `com.jawadsites.haydar`; analyze and 3 tests pass; debug APK built; startup shell shows an honest ready state and a real local API/database readiness probe |
 | Next.js foundation | Completed | Next 16 locale routes; lint/typecheck/build pass; 8 Vitest tests pass |
 | CI | Blocked | Complete workflow and local scripts pass `actionlint`/PowerShell checks; GitHub returns `startup_failure` before even a run-only probe executes |
 

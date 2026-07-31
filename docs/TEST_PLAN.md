@@ -24,6 +24,9 @@ Foundation commands are `ruff format --check`, `ruff check`, `mypy app`, and
 
 - Unit/state tests for session, permissions and attendance state.
 - Widget tests for loading, error, unauthorized-device and role visibility.
+- Foundation widget tests override the local API health probe so tests remain
+  deterministic; physical-device checks exercise the real `/health/ready`
+  chain.
 - Arabic RTL and English LTR smoke tests.
 - Integration tests for authentication, activation, GPS permission, geofence,
   QR, biometric confirmation and attendance.
@@ -73,6 +76,8 @@ local environments, dependency trees, caches, and generated build artifacts.
 - Development/test databases and least-privileged roles verified.
 - Alembic upgrades the test database successfully.
 - Live health endpoint succeeds independently; ready health performs `SELECT 1`.
+- A physical Android device can reach the laptop API through
+  `API_BASE_URL=http://<laptop-ip>:8000/api/v1`.
 - Backend, Flutter and web static/test/build checks pass.
 - GitHub Actions complete without Docker/service containers.
 - No real-device claim is made until a USB device test is observed.

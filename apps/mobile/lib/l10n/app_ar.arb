@@ -6,5 +6,9 @@
   "foundationDescription": "إدارة آمنة للحضور والعمل تناسب جميع الصلاحيات.",
   "arabicLanguage": "العربية",
   "englishLanguage": "English",
-  "foundationStatus": "الواجهة الأساسية جاهزة"
+  "foundationStatus": "الواجهة الأساسية جاهزة",
+  "apiChecking": "فحص الاتصال المحلي",
+  "apiReady": "الاتصال المحلي وقاعدة البيانات جاهزان",
+  "apiUnavailable": "الاتصال المحلي غير متاح حالياً",
+  "apiEndpoint": "عنوان API"
 }

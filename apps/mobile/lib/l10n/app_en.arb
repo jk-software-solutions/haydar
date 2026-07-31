@@ -6,5 +6,9 @@
   "foundationDescription": "Secure attendance and workforce management for every role.",
   "arabicLanguage": "العربية",
   "englishLanguage": "English",
-  "foundationStatus": "Foundation shell is ready"
+  "foundationStatus": "Foundation shell is ready",
+  "apiChecking": "Checking local API",
+  "apiReady": "Local API and database are reachable",
+  "apiUnavailable": "Local API is not reachable yet",
+  "apiEndpoint": "API endpoint"
 }

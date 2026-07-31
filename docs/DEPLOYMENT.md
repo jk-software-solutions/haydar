@@ -24,6 +24,37 @@ Create isolated `haydar_dev` and `haydar_test` databases plus `haydar_app` and
 receives only runtime sequence/table permissions. Backups and migration checks
 precede destructive production changes.
 
+Run the local bootstrap from the repository root:
+
+```powershell
+.\scripts\setup-postgres.ps1
+```
+
+The script prompts only for the existing PostgreSQL administrator password,
+generates the application and migration passwords, writes them to the ignored
+root `.env`, and verifies role access to `haydar_dev` and `haydar_test`.
+
+## Local phone-to-laptop testing
+
+Start FastAPI on all local interfaces with one worker:
+
+```powershell
+.\scripts\start-api-local.ps1
+```
+
+The script prints the LAN URL, for example
+`http://192.168.1.50:8000/api/v1`. Start the Flutter app on a real USB device
+with the same URL:
+
+```powershell
+.\scripts\run-mobile-device.ps1
+```
+
+This passes `API_BASE_URL` through `--dart-define`. The mobile foundation shell
+checks `/health/ready`, which is backed by a real `SELECT 1` database query.
+No emulator is created. If the phone cannot reach the API, allow inbound
+private-network access to port `8000` in Windows Firewall.
+
 ## Production target
 
 The initial deployment uses:

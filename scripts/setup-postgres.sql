@@ -1,7 +1,17 @@
 \set ON_ERROR_STOP on
 
-\prompt 'Password for role haydar_app: ' app_password
-\prompt 'Password for role haydar_migrator: ' migrator_password
+\getenv app_password HAYDAR_APP_PASSWORD
+\getenv migrator_password HAYDAR_MIGRATOR_PASSWORD
+
+\if :{?app_password}
+\else
+    \quit 1
+\endif
+
+\if :{?migrator_password}
+\else
+    \quit 1
+\endif
 
 SELECT format('CREATE ROLE haydar_app LOGIN PASSWORD %L', :'app_password')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'haydar_app')
@@ -28,8 +38,11 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'haydar_test')
 \gexec
 
 \connect haydar_dev
+REVOKE CONNECT ON DATABASE haydar_dev FROM PUBLIC;
+GRANT CONNECT ON DATABASE haydar_dev TO haydar_migrator;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT CONNECT ON DATABASE haydar_dev TO haydar_app;
+GRANT USAGE, CREATE ON SCHEMA public TO haydar_migrator;
 GRANT USAGE ON SCHEMA public TO haydar_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE haydar_migrator IN SCHEMA public
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO haydar_app;
@@ -37,8 +50,11 @@ ALTER DEFAULT PRIVILEGES FOR ROLE haydar_migrator IN SCHEMA public
     GRANT USAGE, SELECT ON SEQUENCES TO haydar_app;
 
 \connect haydar_test
+REVOKE CONNECT ON DATABASE haydar_test FROM PUBLIC;
+GRANT CONNECT ON DATABASE haydar_test TO haydar_migrator;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT CONNECT ON DATABASE haydar_test TO haydar_app;
+GRANT USAGE, CREATE ON SCHEMA public TO haydar_migrator;
 GRANT USAGE ON SCHEMA public TO haydar_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE haydar_migrator IN SCHEMA public
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO haydar_app;
