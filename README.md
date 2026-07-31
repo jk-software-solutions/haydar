@@ -35,6 +35,19 @@ scripts/        Lightweight Windows development helpers
 - Package caches, virtual environments, data, and build artifacts should remain
   on drive F: where practical.
 
+## Verification
+
+From PowerShell at the repository root, run the complete foundation gate with:
+
+```powershell
+.\scripts\verify-foundation.ps1
+```
+
+The API, Flutter, and web checks run sequentially. After staging a logical
+checkpoint, run `.\scripts\check-staged.ps1` before committing. GitHub Actions
+repeats all quality gates from clean Linux runners and builds a debug APK
+without starting an emulator.
+
 ## Documentation
 
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md)

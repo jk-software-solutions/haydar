@@ -62,6 +62,11 @@ Before commit and push:
 4. Inspect staged paths for `.env`, caches, dependencies and build output.
 5. Update implementation status with exact limitations.
 
+The repository-level `scripts/verify-foundation.ps1` helper performs backend,
+Flutter, and web checks sequentially and stops project-owned development
+processes when it finishes. `scripts/check-staged.ps1` rejects common secrets,
+local environments, dependency trees, caches, and generated build artifacts.
+
 ## Foundation acceptance
 
 - PostgreSQL version and authenticated connectivity verified.

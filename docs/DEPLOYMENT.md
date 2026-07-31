@@ -50,10 +50,13 @@ No Docker image or Compose dependency is required.
 
 ## CI/CD
 
-GitHub Actions runs independent sequential jobs for API, mobile and web. Native
-PostgreSQL is installed/configured on the runner when database integration
-tests begin; service containers are not used. `develop` receives checkpoint
-pushes. A tested milestone is promoted to `main` through a pull request.
+GitHub Actions runs independent API, mobile, and web jobs; commands within each
+job run sequentially. The workflow uses Python 3.12, Flutter 3.44.7, Java 21,
+Node 24.14.1, and pnpm 10.33.3, then produces a seven-day debug APK artifact.
+Native PostgreSQL is installed/configured on the runner when database
+integration tests begin; service containers are not used. `develop` receives
+checkpoint pushes. A tested milestone is promoted to `main` through a pull
+request.
 
 ## Android release
 

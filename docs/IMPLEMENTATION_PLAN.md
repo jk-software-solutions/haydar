@@ -69,7 +69,7 @@ its checks pass; time elapsed never changes a status to **Completed**.
 | Alembic database execution | In progress | Configuration exists; real migration waits for isolated database setup |
 | Flutter foundation | Completed | One app, `com.jawadsites.haydar`; analyze and 2 RTL/LTR tests pass; debug APK built |
 | Next.js foundation | Completed | Next 16 locale routes; lint/typecheck/build pass; 8 Vitest tests pass |
-| CI | Not started | Workflow pending |
+| CI | In progress | API, mobile, and web workflow plus sequential local verification scripts added; first remote run pending |
 
 Flutter runtime/plugin testing remains scheduled for a physical USB-connected
 Android device. No emulator was created or started. The foundation completion
@@ -86,6 +86,12 @@ Every logical task must:
 4. Update this status file with the implementation.
 5. Commit with a meaningful conventional message.
 6. Push to `develop` without force.
+
+Run `./scripts/verify-foundation.ps1` for the complete local foundation gate.
+During small code-only checkpoints, the explicit `-SkipMobileBuild` or
+`-SkipWebBuild` switches may avoid repeating an unchanged expensive build, but
+both builds remain mandatory for milestone acceptance. Run
+`./scripts/check-staged.ps1` after staging and before every commit.
 
 Promotion from `develop` to `main` requires a tested milestone and green
 relevant CI. Mobile milestones additionally require a physical-device check
