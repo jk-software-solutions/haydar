@@ -24,6 +24,8 @@ dist/
 
 # Node and Next.js
 node_modules/
+node_modules.partial/
+node_modules.cstore/
 .next/
 out/
 .turbo/

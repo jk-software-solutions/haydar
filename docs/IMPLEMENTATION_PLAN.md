@@ -68,7 +68,7 @@ its checks pass; time elapsed never changes a status to **Completed**.
 | FastAPI code foundation | Completed | Ruff format/lint, strict mypy, and 3 pytest health tests pass |
 | Alembic database execution | In progress | Configuration exists; real migration waits for isolated database setup |
 | Flutter foundation | Completed | One app, `com.jawadsites.haydar`; analyze and 2 RTL/LTR tests pass; debug APK built |
-| Next.js foundation | Not started | Scaffold and checks pending |
+| Next.js foundation | Completed | Next 16 locale routes; lint/typecheck/build pass; 8 Vitest tests pass |
 | CI | Not started | Workflow pending |
 
 Flutter runtime/plugin testing remains scheduled for a physical USB-connected
