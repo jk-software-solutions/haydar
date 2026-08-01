@@ -26,5 +26,30 @@
       "fullName": {},
       "companyName": {}
     }
-  }
+  },
+  "openWorkspace": "Open workspace",
+  "sessionRequired": "Your secure session has ended. Sign in again to continue.",
+  "logoutButton": "Sign out",
+  "logoutError": "The server could not complete sign out. Your local session was cleared.",
+  "welcomeUser": "Welcome, {fullName}",
+  "@welcomeUser": {
+    "placeholders": {
+      "fullName": {}
+    }
+  },
+  "authenticatedWorkspaceDescription": "Your authenticated, role-based HADIR workspace is open.",
+  "secureSessionTitle": "Secure session active",
+  "secureSessionDescription": "This identity and company were loaded from the FastAPI session endpoint.",
+  "companyLabel": "Company",
+  "roleLabel": "Role",
+  "ownerWorkspaceTitle": "Company owner workspace",
+  "managerWorkspaceTitle": "Manager workspace",
+  "supervisorWorkspaceTitle": "Supervisor workspace",
+  "hrWorkspaceTitle": "HR workspace",
+  "employeeWorkspaceTitle": "Employee workspace",
+  "ownerRole": "Company owner",
+  "managerRole": "Company manager",
+  "supervisorRole": "Supervisor",
+  "hrRole": "HR officer",
+  "employeeRole": "Employee"
 }

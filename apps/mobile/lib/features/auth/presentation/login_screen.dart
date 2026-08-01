@@ -1,9 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
-import '../application/auth_api.dart';
+import '../application/auth_controller.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -17,9 +18,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  bool _isSubmitting = false;
   String? _errorText;
-  AuthSession? _session;
 
   @override
   void dispose() {
@@ -33,23 +32,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
     setState(() {
-      _isSubmitting = true;
       _errorText = null;
-      _session = null;
     });
     try {
-      final session = await ref
-          .read(authApiProvider)
-          .login(
+      await ref
+          .read(authControllerProvider.notifier)
+          .signIn(
             email: _emailController.text.trim(),
             password: _passwordController.text,
           );
-      setState(() => _session = session);
-    } on DioException catch (error) {
-      setState(() => _errorText = _friendlyError(error));
-    } finally {
       if (mounted) {
-        setState(() => _isSubmitting = false);
+        context.go('/app');
+      }
+    } on DioException catch (error) {
+      if (mounted) {
+        setState(() => _errorText = _friendlyError(error));
+      }
+    } on Object {
+      if (mounted) {
+        setState(
+          () => _errorText = AppLocalizations.of(context).loginConnectionError,
+        );
       }
     }
   }
@@ -69,6 +72,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
+    final authState = ref.watch(authControllerProvider);
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.loginTitle)),
@@ -130,8 +134,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 20),
                     FilledButton.icon(
-                      onPressed: _isSubmitting ? null : _submit,
-                      icon: _isSubmitting
+                      onPressed: authState.isSubmitting ? null : _submit,
+                      icon: authState.isSubmitting
                           ? const SizedBox.square(
                               dimension: 18,
                               child: CircularProgressIndicator(strokeWidth: 2),
@@ -144,21 +148,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       Text(
                         _errorText!,
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Theme.of(context).colorScheme.error),
-                      ),
-                    ],
-                    if (_session != null) ...<Widget>[
-                      const SizedBox(height: 16),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text(
-                            l10n.loginSuccess(
-                              _session!.fullName,
-                              _session!.companyName,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
                         ),
                       ),
                     ],

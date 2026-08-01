@@ -7,6 +7,7 @@ import '../../../app/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_health.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../auth/application/auth_controller.dart';
 
 class SplashScreen extends ConsumerWidget {
   const SplashScreen({super.key});
@@ -16,6 +17,7 @@ class SplashScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final textTheme = Theme.of(context).textTheme;
     final apiHealth = ref.watch(apiHealthProvider);
+    final authState = ref.watch(authControllerProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -77,9 +79,21 @@ class SplashScreen extends ConsumerWidget {
                   const SizedBox(height: 24),
                   apiHealth.maybeWhen(
                     data: (_) => FilledButton.icon(
-                      onPressed: () => context.go('/login'),
-                      icon: const Icon(Icons.login_rounded),
-                      label: Text(l10n.continueToLogin),
+                      onPressed: authState.isInitializing
+                          ? null
+                          : () => context.go(
+                              authState.session == null ? '/login' : '/app',
+                            ),
+                      icon: Icon(
+                        authState.session == null
+                            ? Icons.login_rounded
+                            : Icons.dashboard_outlined,
+                      ),
+                      label: Text(
+                        authState.session == null
+                            ? l10n.continueToLogin
+                            : l10n.openWorkspace,
+                      ),
                     ),
                     orElse: () => OutlinedButton.icon(
                       onPressed: null,
@@ -140,17 +154,11 @@ class _ApiStatusChip extends StatelessWidget {
         label: Text(l10n.apiChecking),
       ),
       error: (_, _) => Chip(
-        avatar: Icon(
-          Icons.cloud_off_outlined,
-          color: colorScheme.error,
-        ),
+        avatar: Icon(Icons.cloud_off_outlined, color: colorScheme.error),
         label: Text(l10n.apiUnavailable),
       ),
       data: (_) => Chip(
-        avatar: Icon(
-          Icons.cloud_done_outlined,
-          color: colorScheme.primary,
-        ),
+        avatar: Icon(Icons.cloud_done_outlined, color: colorScheme.primary),
         label: Text(l10n.apiReady),
       ),
     );

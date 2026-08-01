@@ -26,5 +26,30 @@
       "fullName": {},
       "companyName": {}
     }
-  }
+  },
+  "openWorkspace": "فتح مساحة العمل",
+  "sessionRequired": "انتهت جلستك الآمنة. سجّل الدخول مجدداً للمتابعة.",
+  "logoutButton": "تسجيل الخروج",
+  "logoutError": "تعذر إكمال تسجيل الخروج في الخادم. تم مسح الجلسة المحلية.",
+  "welcomeUser": "مرحباً، {fullName}",
+  "@welcomeUser": {
+    "placeholders": {
+      "fullName": {}
+    }
+  },
+  "authenticatedWorkspaceDescription": "تم فتح مساحة عمل حاضر الآمنة والمخصصة حسب صلاحيتك.",
+  "secureSessionTitle": "الجلسة الآمنة فعّالة",
+  "secureSessionDescription": "تم تحميل الهوية والشركة من جلسة FastAPI الحقيقية.",
+  "companyLabel": "الشركة",
+  "roleLabel": "الصلاحية",
+  "ownerWorkspaceTitle": "مساحة عمل مالك الشركة",
+  "managerWorkspaceTitle": "مساحة عمل المدير",
+  "supervisorWorkspaceTitle": "مساحة عمل المشرف",
+  "hrWorkspaceTitle": "مساحة عمل الموارد البشرية",
+  "employeeWorkspaceTitle": "مساحة عمل الموظف",
+  "ownerRole": "مالك الشركة",
+  "managerRole": "مدير الشركة",
+  "supervisorRole": "مشرف",
+  "hrRole": "موظف موارد بشرية",
+  "employeeRole": "موظف"
 }

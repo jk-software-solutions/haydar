@@ -1,6 +1,6 @@
 # HADIR Implementation Plan
 
-Last updated: 2026-07-31
+Last updated: 2026-08-01
 
 ## Status definitions
 
@@ -91,9 +91,20 @@ companies, users, company memberships, and refresh sessions. Backend auth tests
 cover owner registration, login, authenticated session lookup, invalid password
 rejection, and refresh-token rotation against `haydar_test` using
 `haydar_migrator` for schema setup and `haydar_app` for runtime API requests.
-Role-specific dashboards and invitation/device activation remain next work, so
-successful login currently confirms the account and company instead of opening
-an employee or manager dashboard.
+
+Successful mobile login now stores the accepted tokens and immediately opens an
+authenticated workspace instead of leaving the user on the login screen. The
+workspace loads the real user, company, membership, and role returned by the
+API; its title changes for Owner, Manager, Supervisor, HR, and Employee roles.
+App restart restores the session through `/auth/session`, refreshes an expired
+access token through the rotating `/auth/refresh` flow, and clears local secure
+storage when refresh fails. Logout calls the real revocation endpoint and then
+clears the device session. Flutter analysis and all 5 mobile tests pass; the 4
+real PostgreSQL-backed auth tests also pass. Physical-device verification of the
+new navigation remains required when the user restarts the current USB build.
+
+Invitation/RBAC enforcement, device activation, employee profiles, and each
+role's functional navigation destinations remain the active Days 5-7 work.
 
 ## Checkpoint workflow
 
