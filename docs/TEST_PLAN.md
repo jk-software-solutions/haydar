@@ -81,3 +81,7 @@ local environments, dependency trees, caches, and generated build artifacts.
 - Backend, Flutter and web static/test/build checks pass.
 - GitHub Actions complete without Docker/service containers.
 - No real-device claim is made until a USB device test is observed.
+- Device binding integration tests cover first-device approval, replacement
+  reason validation, permission denial, tenant-scoped queues, cross-company
+  access rejection, transactional replacement, and the one-approved-device
+  invariant.

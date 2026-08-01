@@ -56,6 +56,11 @@ The backend stores the public key, approval state and history. Sensitive
 attendance requests require an active device and signed challenge/request.
 Changing devices revokes the old approval after an audited workflow.
 
+PostgreSQL partial unique indexes enforce one approved device and one pending
+change request per tenant membership. Approval/rejection locks the scoped rows,
+requires a persisted device-management grant, and writes an immutable audit
+event. Cross-tenant request IDs return not found rather than revealing records.
+
 The server validates subscription, membership, assignment, shift window,
 device, geofence, duplicate/open session and approved permissions. Raw evidence
 is retained in immutable attendance events. Play Integrity is an adapter point,

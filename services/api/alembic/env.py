@@ -8,8 +8,11 @@ from alembic import context
 from app.core.config import Settings
 from app.db.base import Base
 from app.models import (
+    AuditLog,
     Company,
     CompanyMembership,
+    Device,
+    DeviceChangeRequest,
     Invitation,
     MembershipRole,
     PermissionDefinition,
@@ -24,9 +27,12 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 _INCLUDED_MODELS = (
+    AuditLog,
     Company,
     CompanyMembership,
     Invitation,
+    Device,
+    DeviceChangeRequest,
     MembershipRole,
     PermissionDefinition,
     RefreshSession,

@@ -29,6 +29,8 @@ class Permission(StrEnum):
     MEMBERS_CREATE = "members:create"
     MEMBERS_MANAGE = "members:manage"
     SETTINGS_MANAGE = "settings:manage"
+    DEVICES_VIEW = "devices:view"
+    DEVICES_MANAGE = "devices:manage"
 
 
 @dataclass(frozen=True, slots=True)

@@ -188,6 +188,26 @@ invitation creation/activation, API enforcement, Flutter, and company web UI.
 Custom roles, external delivery, and existing-global-identity invitation
 acceptance remain follow-on extensions. Day 6 device binding is next.
 
+### Device binding backend checkpoint
+
+Migration `20260801_0004_device_binding` is applied to `haydar_dev`. It creates
+tenant-bound devices, device-change requests, and immutable audit logs, plus
+persisted `devices:view` and `devices:manage` grants. Composite foreign keys tie
+every member, approver, reviewer, current device, requested device, and audit
+actor to the same company. Partial unique indexes enforce one approved device
+and one pending change request per membership.
+
+The first installation is approved automatically. A later installation requires
+a reason and remains pending until an authorized Owner, Manager, or HR reviewer
+approves or rejects it. Approval locks the request/devices, flushes revocation
+of the old device before approving the replacement, and records an audit event
+in the same transaction. Tenant-scoped queues and employee device history are
+real API endpoints. Ruff, mypy, all 10 API tests, Alembic execution, and head
+verification pass against native PostgreSQL.
+
+Flutter installation identity, employee unapproved-device states, and manager
+approval screens remain the active remainder of Day 6.
+
 ## Checkpoint workflow
 
 Every logical task must:

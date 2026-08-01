@@ -15,13 +15,19 @@ BUILTIN_PERMISSIONS: dict[str, str] = {
     "members:create": "Invite new company members",
     "members:manage": "Update company memberships and roles",
     "settings:manage": "Manage company settings",
+    "devices:view": "View company device registrations and change requests",
+    "devices:manage": "Approve or reject employee device changes",
 }
 
 ROLE_PERMISSION_CODES: dict[str, frozenset[str]] = {
     "OWNER": frozenset(BUILTIN_PERMISSIONS),
-    "MANAGER": frozenset({"members:view", "members:create", "members:manage"}),
-    "HR_OFFICER": frozenset({"members:view", "members:create", "members:manage"}),
-    "SUPERVISOR": frozenset({"members:view"}),
+    "MANAGER": frozenset(
+        {"members:view", "members:create", "members:manage", "devices:view", "devices:manage"}
+    ),
+    "HR_OFFICER": frozenset(
+        {"members:view", "members:create", "members:manage", "devices:view", "devices:manage"}
+    ),
+    "SUPERVISOR": frozenset({"members:view", "devices:view"}),
     "EMPLOYEE": frozenset(),
 }
 

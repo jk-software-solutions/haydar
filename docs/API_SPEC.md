@@ -85,6 +85,19 @@ development the activation token is returned once to support manual delivery;
 the later email/SMS milestone will deliver the same real token through the
 configured provider without storing its plaintext value.
 
+### Implemented device contract
+
+- `POST /devices/register` registers the authenticated membership's installation;
+  the first device is approved, while replacements require a reason and review.
+- `GET /devices/me` returns only the authenticated membership's device history.
+- `GET /devices/change-requests` returns a paginated, tenant-scoped reviewer queue.
+- `POST /devices/change-requests/{id}/approve` revokes the previous device and
+  approves the requested replacement atomically.
+- `POST /devices/change-requests/{id}/reject` rejects the request and revokes the
+  pending installation.
+
+The API never accepts membership or company identity in device payloads.
+
 ## Concurrency and idempotency
 
 `Idempotency-Key` is mandatory for check-in/out, manual corrections, device

@@ -1,3 +1,4 @@
+from app.models.devices import AuditLog, Device, DeviceChangeRequest
 from app.models.identity import (
     Company,
     CompanyMembership,
@@ -20,4 +21,7 @@ __all__ = [
     "Role",
     "RolePermission",
     "User",
+    "AuditLog",
+    "Device",
+    "DeviceChangeRequest",
 ]
