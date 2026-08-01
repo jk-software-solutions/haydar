@@ -181,7 +181,9 @@ async def current_session(
         if payload.get("typ") != "access":
             raise jwt.InvalidTokenError("Unexpected token type")
         user_id = UUID(str(payload["sub"]))
+        company_id = UUID(str(payload["company_id"]))
         membership_id = UUID(str(payload["membership_id"]))
+        refresh_session_id = UUID(str(payload["sid"]))
     except (jwt.PyJWTError, KeyError, ValueError) as exc:
         raise ProblemError(
             status=status.HTTP_401_UNAUTHORIZED,
@@ -196,11 +198,27 @@ async def current_session(
         .where(
             CompanyMembership.id == membership_id,
             CompanyMembership.user_id == user_id,
+            CompanyMembership.company_id == company_id,
             CompanyMembership.status == "active",
         )
     )
     membership = await session.scalar(statement)
-    if membership is None or not membership.user.is_active:
+    active_refresh_session = await session.scalar(
+        select(RefreshSession.id).where(
+            RefreshSession.id == refresh_session_id,
+            RefreshSession.user_id == user_id,
+            RefreshSession.company_id == company_id,
+            RefreshSession.membership_id == membership_id,
+            RefreshSession.revoked_at.is_(None),
+            RefreshSession.expires_at > datetime.now(UTC),
+        )
+    )
+    if (
+        membership is None
+        or not membership.user.is_active
+        or membership.company.status != "active"
+        or active_refresh_session is None
+    ):
         raise ProblemError(
             status=status.HTTP_401_UNAUTHORIZED,
             code="invalid_session",
@@ -320,7 +338,16 @@ async def refresh(
             detail="The refresh token is expired, revoked or invalid.",
         )
 
-    membership = await active_membership_for_user(session, stored_session.user_id)
+    membership = await session.scalar(
+        select(CompanyMembership)
+        .options(selectinload(CompanyMembership.company), selectinload(CompanyMembership.user))
+        .where(
+            CompanyMembership.id == stored_session.membership_id,
+            CompanyMembership.user_id == stored_session.user_id,
+            CompanyMembership.company_id == stored_session.company_id,
+            CompanyMembership.status == "active",
+        )
+    )
     if membership is None:
         raise ProblemError(
             status=status.HTTP_401_UNAUTHORIZED,

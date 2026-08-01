@@ -30,6 +30,13 @@ Composite constraints prevent cross-tenant references. Cross-company tests are
 required before each tenant-owned module is complete. PostgreSQL RLS may be
 added later as defense in depth and must not replace application policies.
 
+The implemented invitation repository paths require a session-derived tenant
+context and include `company_id` in every query. The inviter reference uses a
+composite `(company_id, membership_id)` constraint. API tests create two real
+companies in `haydar_test` and prove that list/detail reads cannot cross the
+tenant boundary. Access tokens are accepted only while their referenced refresh
+session, membership, user, and company are all active.
+
 ## Device and attendance security
 
 Each installation creates a random identifier and device-held signing key.

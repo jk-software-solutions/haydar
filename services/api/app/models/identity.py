@@ -1,7 +1,14 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -52,6 +59,7 @@ class CompanyMembership(Base):
     __tablename__ = "company_memberships"
     __table_args__ = (
         UniqueConstraint("company_id", "user_id", name="uq_company_memberships_company_user"),
+        UniqueConstraint("company_id", "id", name="uq_company_memberships_company_id"),
         Index("ix_company_memberships_company_status", "company_id", "status"),
     )
 
@@ -90,3 +98,33 @@ class RefreshSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class Invitation(Base):
+    __tablename__ = "invitations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "invited_by_membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_invitations_company_inviter",
+        ),
+        Index("ix_invitations_company_status", "company_id", "status"),
+        Index("ix_invitations_company_email", "company_id", "email"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    invited_by_membership_id: Mapped[UUID] = mapped_column(nullable=False)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    role_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+    )

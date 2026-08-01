@@ -55,6 +55,7 @@ the web server layer stores it in Secure, HttpOnly, SameSite cookies.
 The versioned API includes:
 
 - `/companies`, `/memberships`, `/roles`, `/permissions`, `/employees`
+- `/invitations`
 - `/devices`, `/branches`, `/shifts`
 - `/attendance`, `/attendance/manual`, `/attendance/history`
 - `/permission-requests`, `/proof-of-presence`
@@ -67,6 +68,22 @@ The versioned API includes:
 Exact endpoint request/response schemas are added alongside each implemented
 module and generated in OpenAPI. Routes unavailable in the current milestone
 are not registered as fake successes.
+
+### Implemented invitation contract
+
+- `POST /invitations` creates a tenant-scoped, expiring invitation for Manager,
+  Supervisor, HR Officer, or Employee. It requires `members:create`.
+- `GET /invitations?page=1&page_size=25` returns the current tenant's paginated
+  invitations and requires `members:view`.
+- `GET /invitations/{invitation_id}` returns only an invitation belonging to
+  the authenticated tenant; another tenant receives `invitation_not_found`.
+- `POST /auth/invitations/activate` consumes the one-time activation token,
+  creates the user and membership, and returns a real access/refresh session.
+
+The create payload forbids unknown fields, including `company_id`. During local
+development the activation token is returned once to support manual delivery;
+the later email/SMS milestone will deliver the same real token through the
+configured provider without storing its plaintext value.
 
 ## Concurrency and idempotency
 

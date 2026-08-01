@@ -106,6 +106,27 @@ new navigation remains required when the user restarts the current USB build.
 Invitation/RBAC enforcement, device activation, employee profiles, and each
 role's functional navigation destinations remain the active Days 5-7 work.
 
+### Tenant invitation and RBAC checkpoint
+
+Migration `20260801_0002_tenant_invitations` is applied to `haydar_dev`. It adds
+tenant-owned invitations with a composite company/inviter foreign key and adds
+the matching composite membership uniqueness constraint. Invitation tokens are
+generated with cryptographic randomness, stored only as SHA-256 hashes, expire
+after seven days, and are accepted once under a row lock.
+
+The API now derives a required `TenantContext` from the authenticated session,
+uses stable role/permission policies for membership operations, rejects
+client-supplied `company_id`, scopes invitation list/detail queries to the
+session company, and returns cross-company detail requests as not found. Access
+JWT validation now also verifies the referenced active refresh session and
+company; refresh rotation remains bound to the exact membership and company
+that issued it. All 9 API tests pass, including two-company list/detail
+isolation, employee permission denial, activation, and token reuse rejection.
+
+Role/permission persistence and management UI, invitation delivery/acceptance
+for an already-existing global identity, Flutter activation screens, and web
+permission visibility remain in progress for the complete Day 5 outcome.
+
 ## Checkpoint workflow
 
 Every logical task must:

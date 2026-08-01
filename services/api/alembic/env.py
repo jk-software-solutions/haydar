@@ -7,13 +7,13 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from app.core.config import Settings
 from app.db.base import Base
-from app.models import Company, CompanyMembership, RefreshSession, User
+from app.models import Company, CompanyMembership, Invitation, RefreshSession, User
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-_INCLUDED_MODELS = (Company, CompanyMembership, RefreshSession, User)
+_INCLUDED_MODELS = (Company, CompanyMembership, Invitation, RefreshSession, User)
 target_metadata = Base.metadata
 
 
