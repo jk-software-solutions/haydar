@@ -30,6 +30,22 @@ class AuthApi {
     return session;
   }
 
+  Future<AuthSession> activateInvitation({
+    required String activationToken,
+    required String password,
+  }) async {
+    final response = await dio.post<Map<String, dynamic>>(
+      '/auth/invitations/activate',
+      data: <String, String>{
+        'activation_token': activationToken,
+        'password': password,
+      },
+    );
+    final session = AuthSession.fromJson(response.data ?? <String, dynamic>{});
+    await _storeTokens(session);
+    return session;
+  }
+
   Future<AuthSession?> restoreSession() async {
     final storage = ref.read(secureStorageProvider);
     final accessToken = await storage.read(key: _accessTokenKey);

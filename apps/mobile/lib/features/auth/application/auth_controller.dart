@@ -91,6 +91,24 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
+  Future<AuthSession> activateInvitation({
+    required String activationToken,
+    required String password,
+  }) async {
+    state = state.copyWith(isSubmitting: true, clearError: true);
+    try {
+      final session = await _api!.activateInvitation(
+        activationToken: activationToken,
+        password: password,
+      );
+      state = AuthState.authenticated(session);
+      return session;
+    } on Object catch (error) {
+      state = AuthState.signedOut(error: error);
+      rethrow;
+    }
+  }
+
   Future<void> signOut() async {
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {

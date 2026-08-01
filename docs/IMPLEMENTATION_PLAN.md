@@ -127,6 +127,26 @@ Role/permission persistence and management UI, invitation delivery/acceptance
 for an already-existing global identity, Flutter activation screens, and web
 permission visibility remain in progress for the complete Day 5 outcome.
 
+### Mobile invitation workflow checkpoint
+
+The single Flutter application now exposes invitation management only to Owner,
+Manager, and HR roles. Authorized users can load the real tenant-scoped list,
+create an invitation with the employee's name/email/role, and copy the one-time
+activation token from a clearly identified private-delivery dialog. Employee
+and Supervisor workspaces do not show the management action, and a direct route
+attempt renders permission denied without calling the invitation API.
+
+The login screen now links to a real invitation activation form. Submitting the
+token and a new password calls `/auth/invitations/activate`, stores the returned
+access/refresh session in secure storage, and routes into the workspace for the
+assigned role. Arabic and English strings, RTL/LTR forms, loading, empty, error,
+retry, and permission-denied states are included. Flutter analysis and all 6
+tests pass. Real-device verification requires restarting the current USB build.
+
+Persistent role/permission administration, existing-identity invitation
+acceptance, external email/SMS delivery, and the Next.js company UI remain the
+unfinished portions of Day 5.
+
 ## Checkpoint workflow
 
 Every logical task must:

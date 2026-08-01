@@ -143,6 +143,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           : const Icon(Icons.login_rounded),
                       label: Text(l10n.loginButton),
                     ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: authState.isSubmitting
+                          ? null
+                          : () => context.push('/activate-invitation'),
+                      child: Text(l10n.haveInvitationButton),
+                    ),
                     if (_errorText != null) ...<Widget>[
                       const SizedBox(height: 16),
                       Text(

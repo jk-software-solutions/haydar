@@ -70,6 +70,11 @@ void main() {
     expect(find.text('تسجيل الدخول'), findsWidgets);
     expect(find.text('البريد الإلكتروني'), findsOneWidget);
     expect(find.text('كلمة المرور'), findsOneWidget);
+
+    await tester.tap(find.text('لدي رمز دعوة'));
+    await tester.pumpAndSettle();
+    expect(find.text('تفعيل الدعوة'), findsWidgets);
+    expect(find.text('رمز الدعوة'), findsOneWidget);
   });
 
   testWidgets('shows the authenticated role workspace after login', (
@@ -113,5 +118,47 @@ void main() {
     expect(find.text('مرحباً، Jawad Owner'), findsOneWidget);
     expect(find.text('My Company'), findsOneWidget);
     expect(find.text('مالك الشركة'), findsOneWidget);
+    expect(find.text('دعوات الموظفين'), findsOneWidget);
+  });
+
+  testWidgets('hides invitation management from an employee workspace', (
+    tester,
+  ) async {
+    const session = AuthSession(
+      accessToken: 'placeholder-access-token',
+      refreshToken: 'placeholder-refresh-token',
+      userId: 'employee-id',
+      email: 'employee@example.com',
+      companyId: 'company-id',
+      membershipId: 'employee-membership-id',
+      companyName: 'My Company',
+      fullName: 'Hadir Employee',
+      roles: <String>['EMPLOYEE'],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: <Override>[
+          authControllerProvider.overrideWith(
+            (ref) =>
+                AuthController.forTest(const AuthState.authenticated(session)),
+          ),
+        ],
+        child: const MaterialApp(
+          locale: Locale('ar'),
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          home: RoleWorkspaceScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('مساحة عمل الموظف'), findsOneWidget);
+    expect(find.text('دعوات الموظفين'), findsNothing);
   });
 }

@@ -77,6 +77,18 @@ class RoleWorkspaceScreen extends ConsumerWidget {
               session: session,
               roleLabel: _roleLabel(l10n, primaryRole),
             ),
+            if (_canManageInvitations(primaryRole)) ...<Widget>[
+              const SizedBox(height: 16),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.mark_email_unread_outlined),
+                  title: Text(l10n.manageInvitationsTitle),
+                  subtitle: Text(l10n.manageInvitationsDescription),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push('/app/invitations'),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             Card(
               child: ListTile(
@@ -114,6 +126,14 @@ class RoleWorkspaceScreen extends ConsumerWidget {
       'HR' || 'HR_OFFICER' => l10n.hrWorkspaceTitle,
       _ => l10n.employeeWorkspaceTitle,
     };
+  }
+
+  bool _canManageInvitations(String role) {
+    return role == 'OWNER' ||
+        role == 'MANAGER' ||
+        role == 'COMPANY_MANAGER' ||
+        role == 'HR' ||
+        role == 'HR_OFFICER';
   }
 
   String _roleLabel(AppLocalizations l10n, String role) {
