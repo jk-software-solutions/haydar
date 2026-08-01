@@ -111,6 +111,71 @@ textarea {
   color: #a32222;
 }
 
+.form-success {
+  margin: 0;
+  color: var(--primary);
+}
+
+.portal-section {
+  padding-block: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.employee-list {
+  display: grid;
+  gap: 10px;
+}
+
+.employee-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8fbfa;
+}
+
+.employee-card summary {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 12px;
+  padding: 16px;
+  cursor: pointer;
+}
+
+.employee-card summary span:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.employee-card small {
+  color: var(--muted);
+}
+
+.employee-form,
+.settings-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0 16px 16px;
+}
+
+.employee-form label,
+.settings-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.checkbox-field {
+  display: flex !important;
+  min-height: 48px;
+  align-items: center;
+  grid-auto-flow: column;
+  justify-content: start;
+}
+
+.checkbox-field input {
+  min-height: auto;
+}
+
 .activation-token {
   grid-column: 1 / -1;
   display: grid;
@@ -289,7 +354,9 @@ textarea {
   }
 
   .portal-header,
-  .portal-form.inline {
+  .portal-form.inline,
+  .employee-form,
+  .settings-form {
     display: grid;
     grid-template-columns: 1fr;
   }

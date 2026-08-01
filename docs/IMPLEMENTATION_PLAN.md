@@ -245,6 +245,22 @@ upgrade/head verification, and a direct `haydar_app` runtime-role read of the
 new table pass. Day 7 web employee management and the complete role-aware mobile
 navigation remain in progress.
 
+### Company organization web checkpoint
+
+The permission-gated Company Admin portal now loads the real tenant employee
+list and current company settings through the server-only authenticated API
+boundary. Owner, Manager, and HR users can expand and edit employee employment
+metadata with optimistic versions; Supervisors receive a read-only tenant list.
+Only Owners can edit company name, default locale, timezone, and country code.
+Browser components never receive access or refresh tokens.
+
+Arabic and English labels cover list, edit, empty, saving, success, and error
+states. Zod validates every Server Action before it calls FastAPI, while the API
+repeats authorization and tenant scoping. ESLint, generated Next route types,
+strict TypeScript, all 12 Vitest tests, and the optimized production build pass
+sequentially. Authenticated browser smoke testing remains pending a locally
+known test login; Day 7 role-aware mobile destinations remain in progress.
+
 ## Checkpoint workflow
 
 Every logical task must:
