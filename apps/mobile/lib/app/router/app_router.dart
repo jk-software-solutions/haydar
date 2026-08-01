@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/login_screen.dart';
+import '../../features/devices/presentation/device_requests_screen.dart';
 import '../../features/home/presentation/role_workspace_screen.dart';
 import '../../features/invitations/presentation/activate_invitation_screen.dart';
 import '../../features/invitations/presentation/invitation_management_screen.dart';
@@ -21,6 +22,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/app/invitations',
       builder: (context, state) => const InvitationManagementScreen(),
+    ),
+    GoRoute(
+      path: '/app/device-requests',
+      builder: (context, state) => const DeviceRequestsScreen(),
     ),
   ],
 );

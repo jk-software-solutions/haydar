@@ -72,5 +72,19 @@
   "noInvitations": "لم يتم إنشاء دعوات بعد.",
   "activationTokenCreatedTitle": "تم إنشاء الدعوة",
   "activationTokenCreatedDescription": "انسخ هذا الرمز الآن وأرسله للموظف بشكل خاص. لا يتم حفظه بصيغة قابلة للقراءة.",
-  "permissionDenied": "ليست لديك صلاحية لفتح هذا القسم."
+  "permissionDenied": "ليست لديك صلاحية لفتح هذا القسم.",
+  "deviceApprovalTitle": "الجهاز المعتمد",
+  "deviceReplacementDescription": "حسابك مرتبط بجهاز معتمد. اشرح سبب استبداله ليتمكن المدير من مراجعة الطلب.",
+  "deviceChangeReasonLabel": "سبب تغيير الجهاز",
+  "deviceReasonValidation": "اكتب سبباً من 5 أحرف على الأقل.",
+  "requestDeviceChangeButton": "طلب تغيير الجهاز",
+  "deviceRegistrationError": "تعذر التحقق من الجهاز مع الخادم.",
+  "devicePendingApproval": "هذا الجهاز بانتظار موافقة المدير. عمليات الحضور الحساسة غير متاحة حالياً.",
+  "deviceRequestsTitle": "طلبات تغيير الأجهزة",
+  "deviceRequestsDescription": "مراجعة الأجهزة البديلة وإلغاء اعتماد الجهاز السابق.",
+  "deviceRequestsError": "تعذر تحميل طلبات الأجهزة.",
+  "deviceReviewError": "تعذر تحديث طلب الجهاز.",
+  "noDeviceRequests": "لا توجد طلبات تغيير جهاز بانتظار المراجعة.",
+  "approveButton": "موافقة",
+  "rejectButton": "رفض"
 }

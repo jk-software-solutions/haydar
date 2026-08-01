@@ -205,8 +205,25 @@ in the same transaction. Tenant-scoped queues and employee device history are
 real API endpoints. Ruff, mypy, all 10 API tests, Alembic execution, and head
 verification pass against native PostgreSQL.
 
-Flutter installation identity, employee unapproved-device states, and manager
-approval screens remain the active remainder of Day 6.
+### Mobile device binding checkpoint
+
+The Flutter app now creates one persistent UUID v4 installation identity in
+secure storage and registers it through the real device API after an Employee
+signs in. The first approved device enters the role workspace immediately. A
+replacement device must submit a reason and remains on a clear pending-approval
+screen until an authorized reviewer acts; it cannot enter the employee
+workspace while unapproved.
+
+Owner, Manager, and HR workspaces now expose the tenant-scoped device-change
+queue with real approve and reject actions. Direct access by other roles renders
+permission denied without loading the queue. Arabic and English UI strings cover
+registration, replacement, pending, error, empty, and review states.
+
+Flutter localization generation, formatting, analysis, and all 7 mobile tests
+pass, including UUID shape, login navigation, employee workspace gating, and
+management visibility. Day 6 is source-complete against the PostgreSQL-backed
+device API. Physical USB-device validation of secure-storage persistence and a
+two-device replacement flow remains required before stable-milestone promotion.
 
 ## Checkpoint workflow
 

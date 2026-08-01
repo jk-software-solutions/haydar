@@ -72,5 +72,19 @@
   "noInvitations": "No invitations have been created yet.",
   "activationTokenCreatedTitle": "Invitation created",
   "activationTokenCreatedDescription": "Copy this one-time code now and send it privately to the employee. It is not stored in readable form.",
-  "permissionDenied": "You do not have permission to open this area."
+  "permissionDenied": "You do not have permission to open this area.",
+  "deviceApprovalTitle": "Approved device",
+  "deviceReplacementDescription": "Your account already has an approved device. Explain why you need to replace it; a manager must approve the change.",
+  "deviceChangeReasonLabel": "Reason for changing device",
+  "deviceReasonValidation": "Enter at least 5 characters explaining the change.",
+  "requestDeviceChangeButton": "Request device change",
+  "deviceRegistrationError": "The device could not be verified with the server.",
+  "devicePendingApproval": "This device is waiting for manager approval. Sensitive attendance actions remain unavailable.",
+  "deviceRequestsTitle": "Device change requests",
+  "deviceRequestsDescription": "Review replacement devices and revoke the previous approval.",
+  "deviceRequestsError": "Device requests could not be loaded.",
+  "deviceReviewError": "The device request could not be updated.",
+  "noDeviceRequests": "No device changes are waiting for review.",
+  "approveButton": "Approve",
+  "rejectButton": "Reject"
 }

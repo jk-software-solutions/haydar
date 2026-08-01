@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../auth/application/auth_api.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../devices/presentation/employee_device_gate.dart';
 
 class RoleWorkspaceScreen extends ConsumerWidget {
   const RoleWorkspaceScreen({super.key});
@@ -44,7 +45,7 @@ class RoleWorkspaceScreen extends ConsumerWidget {
     final primaryRole = session.roles.isEmpty
         ? 'EMPLOYEE'
         : session.roles.first;
-    return Scaffold(
+    final workspace = Scaffold(
       appBar: AppBar(
         title: Text(_workspaceTitle(l10n, primaryRole)),
         actions: <Widget>[
@@ -89,6 +90,18 @@ class RoleWorkspaceScreen extends ConsumerWidget {
                 ),
               ),
             ],
+            if (_canManageDevices(primaryRole)) ...<Widget>[
+              const SizedBox(height: 16),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.phonelink_lock_outlined),
+                  title: Text(l10n.deviceRequestsTitle),
+                  subtitle: Text(l10n.deviceRequestsDescription),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push('/app/device-requests'),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             Card(
               child: ListTile(
@@ -101,6 +114,9 @@ class RoleWorkspaceScreen extends ConsumerWidget {
         ),
       ),
     );
+    return primaryRole == 'EMPLOYEE'
+        ? EmployeeDeviceGate(child: workspace)
+        : workspace;
   }
 
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {
@@ -135,6 +151,8 @@ class RoleWorkspaceScreen extends ConsumerWidget {
         role == 'HR' ||
         role == 'HR_OFFICER';
   }
+
+  bool _canManageDevices(String role) => _canManageInvitations(role);
 
   String _roleLabel(AppLocalizations l10n, String role) {
     return switch (role) {

@@ -6,6 +6,7 @@ import 'package:haydar/app/haydar_app.dart';
 import 'package:haydar/core/network/api_health.dart';
 import 'package:haydar/features/auth/application/auth_api.dart';
 import 'package:haydar/features/auth/application/auth_controller.dart';
+import 'package:haydar/features/devices/application/device_api.dart';
 import 'package:haydar/features/home/presentation/role_workspace_screen.dart';
 import 'package:haydar/l10n/generated/app_localizations.dart';
 
@@ -98,6 +99,12 @@ void main() {
             (ref) =>
                 AuthController.forTest(const AuthState.authenticated(session)),
           ),
+          deviceBindingProvider.overrideWith(
+            (ref) async => const DeviceBinding(
+              status: 'approved',
+              requiresApproval: false,
+            ),
+          ),
         ],
         child: const MaterialApp(
           locale: Locale('ar'),
@@ -119,6 +126,7 @@ void main() {
     expect(find.text('My Company'), findsOneWidget);
     expect(find.text('مالك الشركة'), findsOneWidget);
     expect(find.text('دعوات الموظفين'), findsOneWidget);
+    expect(find.text('طلبات تغيير الأجهزة'), findsOneWidget);
   });
 
   testWidgets('hides invitation management from an employee workspace', (
@@ -141,6 +149,12 @@ void main() {
           authControllerProvider.overrideWith(
             (ref) =>
                 AuthController.forTest(const AuthState.authenticated(session)),
+          ),
+          deviceBindingProvider.overrideWith(
+            (ref) async => const DeviceBinding(
+              status: 'approved',
+              requiresApproval: false,
+            ),
           ),
         ],
         child: const MaterialApp(
