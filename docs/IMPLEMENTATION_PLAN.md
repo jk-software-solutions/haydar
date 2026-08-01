@@ -277,6 +277,25 @@ formatting, Flutter analysis, and all 7 tests pass. Day 7 is source-complete;
 physical USB-device navigation and secure-storage validation remain required
 before stable promotion. Days 8-10 branch and shift work are next.
 
+### Branches, departments, and transfers backend checkpoint
+
+Migration `20260801_0006_branches_departments` is applied to `haydar_dev`. It
+adds explicit branch, department, and assignment permissions; hierarchical
+departments; full branch address/geofence/timezone/working-hours data; employee
+department references; and effective-dated employee branch assignment history.
+
+The real API now supports tenant-scoped branch and department CRUD with soft
+archive, optimistic versions, same-tenant manager/parent checks, and immutable
+audit events. Employee transfers close the previous assignment one day before
+the new effective date and create a new current row inside one transaction. A
+partial unique index guarantees only one open branch assignment per membership.
+
+Ruff formatting/lint, strict mypy, all 14 PostgreSQL-backed API tests, focused
+cross-tenant transfer tests, Alembic upgrade/head verification, and direct
+`haydar_app` runtime reads of every new table pass. Day 8 management UI and map
+picker remain in progress; no Google Maps credential is requested until that UI
+integration begins.
+
 ## Checkpoint workflow
 
 Every logical task must:

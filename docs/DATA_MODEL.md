@@ -59,6 +59,15 @@ date, preferred locale, attendance eligibility, optimistic version, and UTC
 timestamps. Composite membership foreign keys and tenant-local employee-number
 uniqueness prevent cross-company references and collisions.
 
+Migration `20260801_0006` implements tenant-owned departments, branches, and
+effective-dated employee branch assignments. Departments support tenant-bound
+parents. Branches store codes, Saudi short/full addresses, server-authoritative
+coordinates and geofence radius, timezone, working hours, optional same-tenant
+manager, active state, and optimistic version. Assignment rows bind employee,
+branch, and actor through composite company foreign keys; a partial unique index
+permits only one open assignment per employee while retaining immutable transfer
+history.
+
 ## Attendance
 
 - `attendance_records`: one calculated work session with employee, branch,

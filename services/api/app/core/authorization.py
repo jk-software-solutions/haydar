@@ -31,6 +31,12 @@ class Permission(StrEnum):
     SETTINGS_MANAGE = "settings:manage"
     DEVICES_VIEW = "devices:view"
     DEVICES_MANAGE = "devices:manage"
+    BRANCHES_VIEW = "branches:view"
+    BRANCHES_MANAGE = "branches:manage"
+    DEPARTMENTS_VIEW = "departments:view"
+    DEPARTMENTS_MANAGE = "departments:manage"
+    ASSIGNMENTS_VIEW = "assignments:view"
+    ASSIGNMENTS_MANAGE = "assignments:manage"
 
 
 @dataclass(frozen=True, slots=True)

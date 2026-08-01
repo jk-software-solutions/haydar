@@ -17,18 +17,56 @@ BUILTIN_PERMISSIONS: dict[str, str] = {
     "settings:manage": "Manage company settings",
     "devices:view": "View company device registrations and change requests",
     "devices:manage": "Approve or reject employee device changes",
+    "branches:view": "View company branches",
+    "branches:manage": "Create and update company branches",
+    "departments:view": "View company departments",
+    "departments:manage": "Create and update company departments",
+    "assignments:view": "View employee branch assignment history",
+    "assignments:manage": "Assign and transfer employees between branches",
 }
 
 ROLE_PERMISSION_CODES: dict[str, frozenset[str]] = {
     "OWNER": frozenset(BUILTIN_PERMISSIONS),
     "MANAGER": frozenset(
-        {"members:view", "members:create", "members:manage", "devices:view", "devices:manage"}
+        {
+            "members:view",
+            "members:create",
+            "members:manage",
+            "devices:view",
+            "devices:manage",
+            "branches:view",
+            "branches:manage",
+            "departments:view",
+            "departments:manage",
+            "assignments:view",
+            "assignments:manage",
+        }
     ),
     "HR_OFFICER": frozenset(
-        {"members:view", "members:create", "members:manage", "devices:view", "devices:manage"}
+        {
+            "members:view",
+            "members:create",
+            "members:manage",
+            "devices:view",
+            "devices:manage",
+            "branches:view",
+            "branches:manage",
+            "departments:view",
+            "departments:manage",
+            "assignments:view",
+            "assignments:manage",
+        }
     ),
-    "SUPERVISOR": frozenset({"members:view", "devices:view"}),
-    "EMPLOYEE": frozenset(),
+    "SUPERVISOR": frozenset(
+        {
+            "members:view",
+            "devices:view",
+            "branches:view",
+            "departments:view",
+            "assignments:view",
+        }
+    ),
+    "EMPLOYEE": frozenset({"branches:view", "departments:view"}),
 }
 
 

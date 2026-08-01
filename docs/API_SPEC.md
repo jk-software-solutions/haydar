@@ -116,6 +116,24 @@ Company and employee write payloads forbid `company_id`. Cross-tenant identifier
 are indistinguishable from missing resources, and successful settings/profile
 updates append immutable audit events.
 
+### Implemented branches and departments contract
+
+- `/branches` supports tenant-scoped create, paginated list, detail, versioned
+  update, and soft archive. Branch payloads include code, Saudi short/full
+  address, coordinates, geofence radius, timezone, working hours, and optional
+  same-tenant manager membership.
+- `/departments` supports tenant-scoped create, list, detail, versioned update,
+  hierarchy, and soft archive.
+- `POST /branches/assignments` creates an initial employee assignment or closes
+  the current effective period and creates an auditable transfer.
+- `GET /branches/assignments/me` returns only the authenticated membership's
+  history; `GET /branches/assignments/{membership_id}` requires
+  `assignments:view` and resolves the membership inside the current tenant.
+
+Branch coordinates and radius are validated in both API schemas and PostgreSQL
+constraints. Codes are unique inside a company, only one current branch
+assignment can exist per membership, and write payloads forbid `company_id`.
+
 ## Concurrency and idempotency
 
 `Idempotency-Key` is mandatory for check-in/out, manual corrections, device

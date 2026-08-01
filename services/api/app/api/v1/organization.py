@@ -13,7 +13,7 @@ from app.core.errors import ProblemError
 from app.db.session import get_session
 from app.models.devices import AuditLog
 from app.models.identity import Company, CompanyMembership, User
-from app.models.organization import EmployeeProfile
+from app.models.organization import Department, EmployeeProfile
 
 companies_router = APIRouter()
 employees_router = APIRouter()
@@ -66,6 +66,7 @@ class UpdateCompanySettingsRequest(BaseModel):
 class EmployeeResponse(BaseModel):
     id: UUID
     membership_id: UUID
+    department_id: UUID | None
     display_name: str
     email: str
     role_code: str
@@ -101,6 +102,7 @@ class UpdateEmployeeRequest(BaseModel):
     hire_date: date | None = None
     preferred_locale: Literal["ar", "en"] | None = None
     attendance_enabled: bool | None = None
+    department_id: UUID | None = None
 
     @field_validator("display_name")
     @classmethod
@@ -149,6 +151,7 @@ def employee_response(
     return EmployeeResponse(
         id=profile.id,
         membership_id=profile.membership_id,
+        department_id=profile.department_id,
         display_name=profile.display_name,
         email=user.email,
         role_code=membership.role_code,
@@ -357,6 +360,22 @@ async def update_employee(
             detail="Reload the employee profile before saving again.",
         )
     changes = payload.model_dump(exclude_unset=True, exclude={"version"})
+    department_id = changes.get("department_id")
+    if department_id is not None and "department_id" in changes:
+        department = await session.scalar(
+            select(Department.id).where(
+                Department.company_id == context.company_id,
+                Department.id == department_id,
+                Department.is_active.is_(True),
+            )
+        )
+        if department is None:
+            raise ProblemError(
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                code="department_invalid",
+                title="Department is invalid",
+                detail="The department must belong to the current company.",
+            )
     for field_name, value in changes.items():
         setattr(profile, field_name, value)
     profile.version += 1
