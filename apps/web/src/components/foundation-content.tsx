@@ -40,9 +40,14 @@ export function FoundationContent({ locale, dictionary }: FoundationContentProps
           ))}
         </ul>
 
-        <Link className="language-link" href={`/${oppositeLocale}`} hrefLang={oppositeLocale}>
-          {dictionary.foundation.language}
-        </Link>
+        <div className="foundation-actions">
+          <Link className="language-link" href={`/${locale}/login`}>
+            {locale === "ar" ? "تسجيل الدخول" : "Sign in"}
+          </Link>
+          <Link className="language-link secondary" href={`/${oppositeLocale}`} hrefLang={oppositeLocale}>
+            {dictionary.foundation.language}
+          </Link>
+        </div>
       </section>
     </main>
   );

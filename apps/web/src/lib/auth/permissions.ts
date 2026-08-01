@@ -1,6 +1,6 @@
 export const companyRoles = [
-  "COMPANY_OWNER",
-  "COMPANY_MANAGER",
+  "OWNER",
+  "MANAGER",
   "SUPERVISOR",
   "HR_OFFICER",
   "EMPLOYEE",
@@ -11,8 +11,8 @@ export type PlatformRole = "SUPER_ADMIN";
 export type PortalRole = CompanyRole | PlatformRole;
 
 const companyPortalRoles = new Set<PortalRole>([
-  "COMPANY_OWNER",
-  "COMPANY_MANAGER",
+  "OWNER",
+  "MANAGER",
   "SUPERVISOR",
   "HR_OFFICER",
 ]);

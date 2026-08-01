@@ -2,6 +2,11 @@
 
 ## Local Windows development
 
+The Next.js server uses `HAYDAR_API_URL` for server-side FastAPI requests and
+defaults locally to `http://127.0.0.1:8000/api/v1`. Deployment must set an
+internal HTTPS API URL. Web session cookies become Secure automatically in
+production and require HTTPS at the public edge.
+
 - Repository: `F:\my_projects\Hadir`
 - Database: existing native PostgreSQL 18 on `localhost:5432`
 - API: Python 3.12 virtual environment, one Uvicorn worker

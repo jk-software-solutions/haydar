@@ -12,6 +12,7 @@ describe("FoundationContent", () => {
 
     expect(screen.getByRole("heading", { name: "حضور أوضح، وإدارة أسهل" })).toBeVisible();
     expect(screen.getByRole("link", { name: "English" })).toHaveAttribute("href", "/en");
+    expect(screen.getByRole("link", { name: "تسجيل الدخول" })).toHaveAttribute("href", "/ar/login");
   });
 
   it("renders English content and links to Arabic", () => {
@@ -19,5 +20,6 @@ describe("FoundationContent", () => {
 
     expect(screen.getByRole("heading", { name: "Attendance, clearly managed" })).toBeVisible();
     expect(screen.getByRole("link", { name: "العربية" })).toHaveAttribute("href", "/ar");
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/en/login");
   });
 });

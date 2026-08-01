@@ -43,6 +43,12 @@ Authorization grants are persisted in `membership_roles` and
 another tenant cannot authorize an action. Built-in policy changes are shipped
 as reviewed migrations and covered by permission-denial integration tests.
 
+The company web portal is a server-side backend-for-frontend boundary. FastAPI
+access and refresh tokens are set as HttpOnly, SameSite=Lax cookies and never
+passed to Client Components or local storage. Login, logout, token rotation,
+session verification, invitation reads, and invitation writes execute on the
+server. Every Server Action repeats authorization even when its form is hidden.
+
 ## Device and attendance security
 
 Each installation creates a random identifier and device-held signing key.

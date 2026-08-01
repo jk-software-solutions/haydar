@@ -163,6 +163,31 @@ tests, and Alembic head verification pass against native PostgreSQL.
 Custom-role administration and the permission-aware Next.js company portal are
 the remaining Day 5 implementation work.
 
+### Secure company web portal checkpoint
+
+The Next.js portal now has real FastAPI-backed login and logout, with access and
+rotating refresh tokens stored only in server-set HttpOnly, SameSite cookies.
+The Next proxy refreshes an expired access cookie through `/auth/refresh`,
+replaces both rotated cookies, and clears failed sessions. No token is exposed
+to Client Components or browser storage.
+
+`/{lang}/company` validates the FastAPI session at the data-access boundary,
+rejects unauthenticated users, checks API role codes, loads tenant-scoped
+invitations, and repeats authorization inside the invitation Server Action.
+Authorized company roles can create validated invitations and receive the
+one-time token once for private delivery.
+
+Web lint, Next type generation, strict TypeScript, 10 Vitest tests, and the
+production build pass sequentially. A local production smoke test returned HTTP
+200 for `/ar/login` and redirected unauthenticated `/ar/company` to login.
+Authenticated browser smoke testing still requires the local owner's password
+and is not claimed by this checkpoint.
+
+Day 5 is functionally complete for built-in roles, persisted permissions,
+invitation creation/activation, API enforcement, Flutter, and company web UI.
+Custom roles, external delivery, and existing-global-identity invitation
+acceptance remain follow-on extensions. Day 6 device binding is next.
+
 ## Checkpoint workflow
 
 Every logical task must:
