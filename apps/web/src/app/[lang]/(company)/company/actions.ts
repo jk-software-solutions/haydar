@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { authorizedApiFetch, getWebSession, logoutWithApi } from "@/lib/auth/server-session";
+import { branchSchema } from "@/lib/validation/branch-schema";
 import { invitationSchema } from "@/lib/validation/invitation-schema";
 import { companySettingsSchema, employeeProfileSchema } from "@/lib/validation/organization-schema";
 
@@ -124,4 +125,52 @@ export async function updateCompanySettingsAction(
   }
   revalidatePath(`/${locale}/company`);
   return { message: locale === "ar" ? "تم حفظ إعدادات الشركة." : "Company settings saved.", success: true };
+}
+
+export async function createBranchAction(
+  locale: string,
+  _state: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await getWebSession();
+  if (!session || !session.roles.some((role) => ["OWNER", "MANAGER", "HR_OFFICER"].includes(role))) {
+    return { message: locale === "ar" ? "ليس لديك صلاحية." : "Permission denied." };
+  }
+  const parsed = branchSchema.safeParse({
+    code: formData.get("code"),
+    name: formData.get("name"),
+    saudi_short_address: formData.get("saudi_short_address"),
+    full_address: formData.get("full_address"),
+    latitude: formData.get("latitude"),
+    longitude: formData.get("longitude"),
+    geofence_radius_m: formData.get("geofence_radius_m"),
+    timezone: formData.get("timezone"),
+  });
+  if (!parsed.success) {
+    return { message: "", errors: parsed.error.flatten().fieldErrors };
+  }
+  const response = await authorizedApiFetch("/branches", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...parsed.data, working_hours: {} }),
+  });
+  if (!response.ok) {
+    const problem = await response.json().catch(() => ({})) as { detail?: string };
+    return { message: problem.detail ?? (locale === "ar" ? "تعذر إنشاء الفرع." : "Branch creation failed.") };
+  }
+  revalidatePath(`/${locale}/company`);
+  return { message: locale === "ar" ? "تم إنشاء الفرع." : "Branch created.", success: true };
+}
+
+export async function archiveBranchAction(
+  locale: string,
+  branchId: string,
+  version: number,
+): Promise<void> {
+  const session = await getWebSession();
+  if (!session || !session.roles.some((role) => ["OWNER", "MANAGER", "HR_OFFICER"].includes(role))) {
+    return;
+  }
+  await authorizedApiFetch(`/branches/${branchId}?version=${version}`, { method: "DELETE" });
+  revalidatePath(`/${locale}/company`);
 }

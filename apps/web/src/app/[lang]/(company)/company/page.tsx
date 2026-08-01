@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { authorizedApiFetch, getWebSession } from "@/lib/auth/server-session";
 import { canEnterCompanyPortal, type PortalRole } from "@/lib/auth/permissions";
 
-import { logoutAction } from "./actions";
+import { archiveBranchAction, logoutAction } from "./actions";
+import { BranchForm } from "./branch-form";
 import { CompanySettingsForm, type CompanySettings } from "./company-settings-form";
 import { EmployeeForm, type EditableEmployee } from "./employee-form";
 import { InvitationForm } from "./invitation-form";
@@ -14,6 +15,19 @@ type Invitation = {
   email: string;
   role_code: string;
   status: string;
+};
+
+type Branch = {
+  id: string;
+  code: string;
+  name: string;
+  full_address: string;
+  saudi_short_address: string | null;
+  latitude: string;
+  longitude: string;
+  geofence_radius_m: number;
+  timezone: string;
+  version: number;
 };
 
 export default async function CompanyPortal({
@@ -34,10 +48,11 @@ export default async function CompanyPortal({
   );
   const canEditEmployees = canManage;
   const canManageSettings = session.roles.includes("OWNER");
-  const [invitationResponse, employeeResponse, settingsResponse] = await Promise.all([
+  const [invitationResponse, employeeResponse, settingsResponse, branchResponse] = await Promise.all([
     canManage ? authorizedApiFetch("/invitations") : Promise.resolve(null),
     authorizedApiFetch("/employees?page_size=100"),
     authorizedApiFetch("/companies/current"),
+    authorizedApiFetch("/branches?page_size=100"),
   ]);
   const invitationPayload: { items: Invitation[] } = invitationResponse?.ok
     ? ((await invitationResponse.json()) as { items: Invitation[] })
@@ -48,6 +63,9 @@ export default async function CompanyPortal({
   const settings = settingsResponse.ok
     ? ((await settingsResponse.json()) as CompanySettings)
     : null;
+  const branchPayload: { items: Branch[] } = branchResponse.ok
+    ? ((await branchResponse.json()) as { items: Branch[] })
+    : { items: [] };
   const signOut = logoutAction.bind(null, lang);
 
   return (
@@ -83,6 +101,27 @@ export default async function CompanyPortal({
                   <span>{employee.job_title || employee.role_code}</span>
                 </li>
               ))}
+            </ul>
+          )}
+        </section>
+        <section className="portal-section">
+          <h2>{ar ? "الفروع" : "Branches"}</h2>
+          <p>{ar ? "الموقع ونطاق الحضور محفوظان في الخادم." : "Location and attendance radius are stored by the server."}</p>
+          {canEditEmployees && <BranchForm locale={lang} />}
+          {branchPayload.items.length === 0 ? (
+            <p>{ar ? "لا توجد فروع نشطة." : "No active branches."}</p>
+          ) : (
+            <ul className="branch-list">
+              {branchPayload.items.map((branch) => {
+                const archive = archiveBranchAction.bind(null, lang, branch.id, branch.version);
+                return (
+                  <li key={branch.id}>
+                    <div><strong>{branch.name}</strong><span>{branch.code} · {branch.saudi_short_address || branch.full_address}</span></div>
+                    <span>{branch.latitude}, {branch.longitude} · {branch.geofence_radius_m}m</span>
+                    {canEditEmployees && <form action={archive}><button className="danger-button" type="submit">{ar ? "أرشفة" : "Archive"}</button></form>}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

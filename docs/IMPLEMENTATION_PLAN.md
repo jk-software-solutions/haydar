@@ -296,6 +296,22 @@ cross-tenant transfer tests, Alembic upgrade/head verification, and direct
 picker remain in progress; no Google Maps credential is requested until that UI
 integration begins.
 
+### Company branch management web checkpoint
+
+The Company Admin portal now reads the authenticated tenant's real branch list
+and provides permission-gated manual branch creation and soft archive. Creation
+captures validated code/name, Saudi short and full address, latitude/longitude,
+geofence radius, and timezone through a Server Action; FastAPI repeats all
+authorization, tenancy, coordinate, and radius validation before PostgreSQL
+writes and audit logging.
+
+Supervisors receive the read-only branch list, while Owner, Manager, and HR can
+create or archive. ESLint, generated route types, strict TypeScript, all 14
+Vitest tests, and the production build pass sequentially. The visual map picker,
+branch update UI, department UI, employee-transfer UI, and manager mobile screen
+remain active Day 8/10 work; manual address/location functionality is real and
+does not require a Google Maps credential.
+
 ## Checkpoint workflow
 
 Every logical task must:

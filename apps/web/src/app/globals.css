@@ -150,18 +150,56 @@ textarea {
 }
 
 .employee-form,
-.settings-form {
+.settings-form,
+.branch-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 0 16px 16px;
 }
 
 .employee-form label,
-.settings-form label {
+.settings-form label,
+.branch-form label {
   display: grid;
   gap: 6px;
   color: var(--muted);
   font-size: 0.88rem;
   font-weight: 700;
+}
+
+.branch-list {
+  display: grid;
+  padding: 0;
+  gap: 10px;
+  list-style: none;
+}
+
+.branch-list li {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.branch-list li div {
+  display: grid;
+  gap: 4px;
+}
+
+.branch-list span {
+  color: var(--muted);
+}
+
+.danger-button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid #d58b8b;
+  border-radius: 10px;
+  background: white;
+  color: #8a1c1c;
+  cursor: pointer;
 }
 
 .checkbox-field {
@@ -356,8 +394,13 @@ textarea {
   .portal-header,
   .portal-form.inline,
   .employee-form,
-  .settings-form {
+  .settings-form,
+  .branch-form {
     display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .branch-list li {
     grid-template-columns: 1fr;
   }
 
