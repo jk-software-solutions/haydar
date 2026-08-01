@@ -3,11 +3,12 @@ import { redirect } from "next/navigation";
 import { authorizedApiFetch, getWebSession } from "@/lib/auth/server-session";
 import { canEnterCompanyPortal, type PortalRole } from "@/lib/auth/permissions";
 
-import { archiveBranchAction, logoutAction } from "./actions";
+import { archiveBranchAction, archiveShiftAction, logoutAction } from "./actions";
 import { BranchForm } from "./branch-form";
 import { CompanySettingsForm, type CompanySettings } from "./company-settings-form";
 import { EmployeeForm, type EditableEmployee } from "./employee-form";
 import { InvitationForm } from "./invitation-form";
+import { ShiftForm } from "./shift-form";
 
 type Invitation = {
   id: string;
@@ -30,6 +31,19 @@ type Branch = {
   version: number;
 };
 
+type Shift = {
+  id: string;
+  code: string;
+  name: string;
+  start_time: string;
+  end_time: string;
+  is_overnight: boolean;
+  working_days: number[];
+  grace_period_minutes: number;
+  break_duration_minutes: number;
+  version: number;
+};
+
 export default async function CompanyPortal({
   params,
 }: {
@@ -48,11 +62,12 @@ export default async function CompanyPortal({
   );
   const canEditEmployees = canManage;
   const canManageSettings = session.roles.includes("OWNER");
-  const [invitationResponse, employeeResponse, settingsResponse, branchResponse] = await Promise.all([
+  const [invitationResponse, employeeResponse, settingsResponse, branchResponse, shiftResponse] = await Promise.all([
     canManage ? authorizedApiFetch("/invitations") : Promise.resolve(null),
     authorizedApiFetch("/employees?page_size=100"),
     authorizedApiFetch("/companies/current"),
     authorizedApiFetch("/branches?page_size=100"),
+    authorizedApiFetch("/shifts?page_size=100"),
   ]);
   const invitationPayload: { items: Invitation[] } = invitationResponse?.ok
     ? ((await invitationResponse.json()) as { items: Invitation[] })
@@ -65,6 +80,9 @@ export default async function CompanyPortal({
     : null;
   const branchPayload: { items: Branch[] } = branchResponse.ok
     ? ((await branchResponse.json()) as { items: Branch[] })
+    : { items: [] };
+  const shiftPayload: { items: Shift[] } = shiftResponse.ok
+    ? ((await shiftResponse.json()) as { items: Shift[] })
     : { items: [] };
   const signOut = logoutAction.bind(null, lang);
 
@@ -118,6 +136,27 @@ export default async function CompanyPortal({
                   <li key={branch.id}>
                     <div><strong>{branch.name}</strong><span>{branch.code} · {branch.saudi_short_address || branch.full_address}</span></div>
                     <span>{branch.latitude}, {branch.longitude} · {branch.geofence_radius_m}m</span>
+                    {canEditEmployees && <form action={archive}><button className="danger-button" type="submit">{ar ? "أرشفة" : "Archive"}</button></form>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+        <section className="portal-section">
+          <h2>{ar ? "الورديات" : "Shifts"}</h2>
+          <p>{ar ? "يحسب الخادم الورديات الليلية وتعارضات التعيين." : "The server calculates overnight shifts and assignment conflicts."}</p>
+          {canEditEmployees && <ShiftForm locale={lang} />}
+          {shiftPayload.items.length === 0 ? (
+            <p>{ar ? "لا توجد ورديات نشطة." : "No active shifts."}</p>
+          ) : (
+            <ul className="branch-list">
+              {shiftPayload.items.map((shift) => {
+                const archive = archiveShiftAction.bind(null, lang, shift.id, shift.version);
+                return (
+                  <li key={shift.id}>
+                    <div><strong>{shift.name}</strong><span>{shift.code} · {shift.start_time.slice(0, 5)}–{shift.end_time.slice(0, 5)}</span></div>
+                    <span>{shift.is_overnight ? (ar ? "ليلية" : "Overnight") : (ar ? "نهارية" : "Same day")} · {shift.working_days.length} {ar ? "أيام" : "days"}</span>
                     {canEditEmployees && <form action={archive}><button className="danger-button" type="submit">{ar ? "أرشفة" : "Archive"}</button></form>}
                   </li>
                 );

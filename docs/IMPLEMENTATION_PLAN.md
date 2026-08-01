@@ -314,6 +314,20 @@ Ruff formatting/lint, strict mypy, all 15 PostgreSQL-backed API tests, Alembic
 upgrade/head verification, and direct `haydar_app` runtime reads of the three new
 tables pass. Shift and assignment management interfaces remain Day 9/10 UI work.
 
+### Company shift management web checkpoint
+
+The Company Admin portal now loads the authenticated tenant's real shifts and
+provides permission-gated creation and soft archive. The bilingual form captures
+times, unique workdays, grace/break minutes, and effective dates. It deliberately
+does not submit `is_overnight`; FastAPI derives that value and returns it for the
+list display.
+
+Supervisors receive the read-only shift list, while Owner, Manager, and HR can
+create and archive. ESLint, generated route types, strict TypeScript, all 16
+Vitest tests, and the production build pass sequentially. Shift update,
+exception, employee/branch assignment UI, and mobile manager scheduling remain
+the active Day 9/10 interface work.
+
 ### Company branch management web checkpoint
 
 The Company Admin portal now reads the authenticated tenant's real branch list

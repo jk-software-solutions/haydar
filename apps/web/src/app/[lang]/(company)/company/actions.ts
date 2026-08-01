@@ -7,6 +7,7 @@ import { authorizedApiFetch, getWebSession, logoutWithApi } from "@/lib/auth/ser
 import { branchSchema } from "@/lib/validation/branch-schema";
 import { invitationSchema } from "@/lib/validation/invitation-schema";
 import { companySettingsSchema, employeeProfileSchema } from "@/lib/validation/organization-schema";
+import { shiftSchema } from "@/lib/validation/shift-schema";
 
 export type InvitationState = {
   message: string;
@@ -172,5 +173,54 @@ export async function archiveBranchAction(
     return;
   }
   await authorizedApiFetch(`/branches/${branchId}?version=${version}`, { method: "DELETE" });
+  revalidatePath(`/${locale}/company`);
+}
+
+export async function createShiftAction(
+  locale: string,
+  _state: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await getWebSession();
+  if (!session || !session.roles.some((role) => ["OWNER", "MANAGER", "HR_OFFICER"].includes(role))) {
+    return { message: locale === "ar" ? "ليس لديك صلاحية." : "Permission denied." };
+  }
+  const parsed = shiftSchema.safeParse({
+    code: formData.get("code"),
+    name: formData.get("name"),
+    start_time: formData.get("start_time"),
+    end_time: formData.get("end_time"),
+    working_days: formData.getAll("working_days"),
+    grace_period_minutes: formData.get("grace_period_minutes"),
+    break_duration_minutes: formData.get("break_duration_minutes"),
+    effective_from: formData.get("effective_from"),
+    effective_to: formData.get("effective_to"),
+  });
+  if (!parsed.success) {
+    return { message: "", errors: parsed.error.flatten().fieldErrors };
+  }
+  const response = await authorizedApiFetch("/shifts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...parsed.data, recurrence: { frequency: "weekly" } }),
+  });
+  if (!response.ok) {
+    const problem = await response.json().catch(() => ({})) as { detail?: string };
+    return { message: problem.detail ?? (locale === "ar" ? "تعذر إنشاء الوردية." : "Shift creation failed.") };
+  }
+  revalidatePath(`/${locale}/company`);
+  return { message: locale === "ar" ? "تم إنشاء الوردية." : "Shift created.", success: true };
+}
+
+export async function archiveShiftAction(
+  locale: string,
+  shiftId: string,
+  version: number,
+): Promise<void> {
+  const session = await getWebSession();
+  if (!session || !session.roles.some((role) => ["OWNER", "MANAGER", "HR_OFFICER"].includes(role))) {
+    return;
+  }
+  await authorizedApiFetch(`/shifts/${shiftId}?version=${version}`, { method: "DELETE" });
   revalidatePath(`/${locale}/company`);
 }
