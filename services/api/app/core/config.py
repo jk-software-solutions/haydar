@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     database_url: str | None = None
     test_database_url: str | None = None
     migration_database_url: str | None = None
+    jwt_secret: str = "development-only-change-me"
+    jwt_access_token_minutes: int = 15
+    jwt_refresh_token_days: int = 30
     cors_origins: str = "http://localhost:3000"
     default_timezone: str = "Asia/Riyadh"
     log_level: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")

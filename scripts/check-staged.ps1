@@ -59,8 +59,12 @@ try {
         throw 'Unable to inspect staged content.'
     }
 
-    $SecretPattern = '(?i)(password|secret|token|api[_-]?key|private[_-]?key)\s*[:=]\s*["'']?(?!<|placeholder|example|changeme|not-configured|\$\{)[A-Za-z0-9_./+=:-]{12,}'
-    $SuspectedSecrets = @($AddedLines | Select-String -Pattern $SecretPattern)
+    $QuotedSecretPattern = '(?i)(password|secret|token|api[_-]?key|private[_-]?key)\s*[:=]\s*["''](?!<|placeholder|example|changeme|not-configured|\$\{)[^"'']{12,}["'']'
+    $EnvironmentSecretPattern = '(?i)^\+\s*[A-Z0-9_]*(PASSWORD|SECRET|TOKEN|API_KEY|PRIVATE_KEY)[A-Z0-9_]*\s*=\s*(?!<|placeholder|example|changeme|not-configured|\$\{)[A-Za-z0-9_./+=:-]{12,}\s*$'
+    $SuspectedSecrets = @(
+        $AddedLines | Select-String -Pattern $QuotedSecretPattern
+        $AddedLines | Select-String -Pattern $EnvironmentSecretPattern
+    )
     if ($SuspectedSecrets.Count -gt 0) {
         throw 'Possible secret values detected in staged additions. Review the staged diff manually.'
     }

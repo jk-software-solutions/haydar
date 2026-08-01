@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/localization/locale_controller.dart';
 import '../../../app/theme/app_theme.dart';
@@ -74,6 +75,19 @@ class SplashScreen extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 24),
+                  apiHealth.maybeWhen(
+                    data: (_) => FilledButton.icon(
+                      onPressed: () => context.go('/login'),
+                      icon: const Icon(Icons.login_rounded),
+                      label: Text(l10n.continueToLogin),
+                    ),
+                    orElse: () => OutlinedButton.icon(
+                      onPressed: null,
+                      icon: const Icon(Icons.login_rounded),
+                      label: Text(l10n.continueToLogin),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   SegmentedButton<String>(
                     segments: <ButtonSegment<String>>[
                       ButtonSegment<String>(

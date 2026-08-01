@@ -10,5 +10,21 @@
   "apiChecking": "Checking local API",
   "apiReady": "Local API and database are reachable",
   "apiUnavailable": "Local API is not reachable yet",
-  "apiEndpoint": "API endpoint"
+  "apiEndpoint": "API endpoint",
+  "continueToLogin": "Continue to login",
+  "loginTitle": "Sign in",
+  "loginSubtitle": "Use a real owner, manager, HR, supervisor, or employee account.",
+  "emailLabel": "Email",
+  "passwordLabel": "Password",
+  "emailValidation": "Enter a valid email.",
+  "passwordValidation": "Password must be at least 8 characters.",
+  "loginButton": "Sign in",
+  "loginConnectionError": "Could not reach the authentication service.",
+  "loginSuccess": "Signed in as {fullName} at {companyName}.",
+  "@loginSuccess": {
+    "placeholders": {
+      "fullName": {},
+      "companyName": {}
+    }
+  }
 }

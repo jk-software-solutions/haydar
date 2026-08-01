@@ -23,6 +23,7 @@ void main() {
     expect(find.text('حضور أوضح، وإدارة أسهل'), findsOneWidget);
     expect(find.text('الواجهة الأساسية جاهزة'), findsOneWidget);
     expect(find.text('الاتصال المحلي وقاعدة البيانات جاهزان'), findsOneWidget);
+    expect(find.text('المتابعة لتسجيل الدخول'), findsOneWidget);
     expect(
       Directionality.of(tester.element(find.text('HADIR | حاضر'))),
       TextDirection.rtl,
@@ -41,9 +42,25 @@ void main() {
 
     expect(find.text('Attendance, clearly managed'), findsOneWidget);
     expect(find.text('Local API and database are reachable'), findsOneWidget);
+    expect(find.text('Continue to login'), findsOneWidget);
     expect(
       Directionality.of(tester.element(find.text('HADIR | حاضر'))),
       TextDirection.ltr,
     );
+  });
+
+  testWidgets('navigates to the real login form after local API is ready', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildTestApp());
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('المتابعة لتسجيل الدخول'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('تسجيل الدخول'), findsWidgets);
+    expect(find.text('البريد الإلكتروني'), findsOneWidget);
+    expect(find.text('كلمة المرور'), findsOneWidget);
   });
 }

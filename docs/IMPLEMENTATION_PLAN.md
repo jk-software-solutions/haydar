@@ -34,7 +34,7 @@ separate role-specific mobile application will be introduced.
 | --- | --- | --- |
 | 1 | Audit, private repository, architecture and planning documents | Completed |
 | 2-3 | Monorepo, native database, FastAPI, Flutter, Next.js, CI foundations | In progress |
-| 3-7 | Design/localization, base schema, auth, tenancy, RBAC, devices | Not started |
+| 3-7 | Design/localization, base schema, auth, tenancy, RBAC, devices | In progress |
 | 8-10 | Branches, departments, transfers, shifts, assignments | Not started |
 | 11-14 | GPS/QR attendance, device checks, checkout and history | Not started |
 | 15-17 | Corrections, permissions, early departure, proof of presence | Not started |
@@ -77,6 +77,23 @@ records source, localization, static analysis, widget tests, identifiers, and a
 successful debug APK build; it does not claim physical-device verification.
 The API readiness endpoint has been smoke-tested through one local Uvicorn
 worker against PostgreSQL and returned `{"status":"ok","service":"haydar-api"}`.
+
+### Auth and navigation checkpoint
+
+The app no longer treats backend readiness as a fake login. The foundation
+screen links to a real login route after `/health/ready` succeeds. The backend
+now exposes real PostgreSQL-backed owner company registration, login, session,
+refresh-token rotation, and logout endpoints under `/api/v1/auth`. Tokens are
+stored by the mobile login client only after the API accepts credentials.
+
+The first auth migration is `20260801_0001_identity_auth_foundation`; it creates
+companies, users, company memberships, and refresh sessions. Backend auth tests
+cover owner registration, login, authenticated session lookup, invalid password
+rejection, and refresh-token rotation against `haydar_test` using
+`haydar_migrator` for schema setup and `haydar_app` for runtime API requests.
+Role-specific dashboards and invitation/device activation remain next work, so
+successful login currently confirms the account and company instead of opening
+an employee or manager dashboard.
 
 ## Checkpoint workflow
 

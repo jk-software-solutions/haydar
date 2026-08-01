@@ -10,5 +10,21 @@
   "apiChecking": "فحص الاتصال المحلي",
   "apiReady": "الاتصال المحلي وقاعدة البيانات جاهزان",
   "apiUnavailable": "الاتصال المحلي غير متاح حالياً",
-  "apiEndpoint": "عنوان API"
+  "apiEndpoint": "عنوان API",
+  "continueToLogin": "المتابعة لتسجيل الدخول",
+  "loginTitle": "تسجيل الدخول",
+  "loginSubtitle": "استخدم حساباً حقيقياً للمالك أو المدير أو الموارد البشرية أو المشرف أو الموظف.",
+  "emailLabel": "البريد الإلكتروني",
+  "passwordLabel": "كلمة المرور",
+  "emailValidation": "أدخل بريداً إلكترونياً صحيحاً.",
+  "passwordValidation": "كلمة المرور يجب أن تكون 8 أحرف على الأقل.",
+  "loginButton": "تسجيل الدخول",
+  "loginConnectionError": "تعذر الوصول إلى خدمة تسجيل الدخول.",
+  "loginSuccess": "تم تسجيل الدخول باسم {fullName} في {companyName}.",
+  "@loginSuccess": {
+    "placeholders": {
+      "fullName": {},
+      "companyName": {}
+    }
+  }
 }
