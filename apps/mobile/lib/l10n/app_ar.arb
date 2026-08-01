@@ -86,5 +86,14 @@
   "deviceReviewError": "تعذر تحديث طلب الجهاز.",
   "noDeviceRequests": "لا توجد طلبات تغيير جهاز بانتظار المراجعة.",
   "approveButton": "موافقة",
-  "rejectButton": "رفض"
+  "rejectButton": "رفض",
+  "navHome": "الرئيسية",
+  "navDashboard": "لوحة التحكم",
+  "navTeam": "الفريق",
+  "navAttendance": "الحضور",
+  "navTasks": "المهام",
+  "navRequests": "الطلبات",
+  "navProfile": "الملف الشخصي",
+  "navMore": "المزيد",
+  "featureScheduledDescription": "هذا القسم مرتبط بمرحلة تنفيذ لاحقة ولم يتم عرض وظائف تجريبية غير متصلة بالخادم."
 }

@@ -86,5 +86,14 @@
   "deviceReviewError": "The device request could not be updated.",
   "noDeviceRequests": "No device changes are waiting for review.",
   "approveButton": "Approve",
-  "rejectButton": "Reject"
+  "rejectButton": "Reject",
+  "navHome": "Home",
+  "navDashboard": "Dashboard",
+  "navTeam": "Team",
+  "navAttendance": "Attendance",
+  "navTasks": "Tasks",
+  "navRequests": "Requests",
+  "navProfile": "Profile",
+  "navMore": "More",
+  "featureScheduledDescription": "This area belongs to a later implementation milestone; no disconnected demo action is shown."
 }

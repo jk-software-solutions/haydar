@@ -261,6 +261,22 @@ strict TypeScript, all 12 Vitest tests, and the optimized production build pass
 sequentially. Authenticated browser smoke testing remains pending a locally
 known test login; Day 7 role-aware mobile destinations remain in progress.
 
+### Role-aware mobile navigation checkpoint
+
+The one Flutter application now renders the required role-specific navigation
+inside the authenticated workspace. Employees receive Home, Attendance, Tasks,
+Requests, and Profile destinations behind the approved-device gate. Owner,
+Manager, Supervisor, and HR experiences receive Dashboard, Team, Attendance,
+Tasks, and More. Management actions for invitations and device approvals remain
+hidden from Employees and are grouped under More for authorized roles.
+
+The dashboard and profile render real authenticated session data. Modules whose
+backend milestones have not started show an explicit scheduled-feature state
+and no fake success actions. Arabic/English navigation, RTL/LTR behavior,
+formatting, Flutter analysis, and all 7 tests pass. Day 7 is source-complete;
+physical USB-device navigation and secure-storage validation remain required
+before stable promotion. Days 8-10 branch and shift work are next.
+
 ## Checkpoint workflow
 
 Every logical task must:

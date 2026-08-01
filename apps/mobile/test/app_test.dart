@@ -125,6 +125,10 @@ void main() {
     expect(find.text('مرحباً، Jawad Owner'), findsOneWidget);
     expect(find.text('My Company'), findsOneWidget);
     expect(find.text('مالك الشركة'), findsOneWidget);
+    expect(find.text('لوحة التحكم'), findsOneWidget);
+    expect(find.text('الفريق'), findsOneWidget);
+    await tester.tap(find.text('المزيد'));
+    await tester.pumpAndSettle();
     expect(find.text('دعوات الموظفين'), findsOneWidget);
     expect(find.text('طلبات تغيير الأجهزة'), findsOneWidget);
   });
@@ -173,6 +177,15 @@ void main() {
     await tester.pump();
 
     expect(find.text('مساحة عمل الموظف'), findsOneWidget);
+    expect(find.text('الرئيسية'), findsOneWidget);
+    expect(find.text('الحضور'), findsOneWidget);
+    expect(find.text('المهام'), findsOneWidget);
+    expect(find.text('الطلبات'), findsOneWidget);
+    expect(find.text('الملف الشخصي'), findsOneWidget);
+    expect(find.text('الفريق'), findsNothing);
+    await tester.tap(find.text('الملف الشخصي'));
+    await tester.pumpAndSettle();
+    expect(find.text('employee@example.com'), findsOneWidget);
     expect(find.text('دعوات الموظفين'), findsNothing);
   });
 }
