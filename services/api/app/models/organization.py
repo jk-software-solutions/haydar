@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -15,6 +15,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    Time,
     UniqueConstraint,
     text,
 )
@@ -185,4 +186,127 @@ class EmployeeBranchAssignment(Base):
     effective_from: Mapped[date] = mapped_column(Date, nullable=False)
     effective_to: Mapped[date | None] = mapped_column(Date)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class Shift(Base):
+    __tablename__ = "shifts"
+    __table_args__ = (
+        UniqueConstraint("company_id", "id", name="uq_shifts_company_id"),
+        UniqueConstraint("company_id", "code", name="uq_shifts_company_code"),
+        CheckConstraint("grace_period_minutes BETWEEN 0 AND 240", name="grace_range"),
+        CheckConstraint("break_duration_minutes BETWEEN 0 AND 720", name="break_range"),
+        CheckConstraint(
+            "effective_to IS NULL OR effective_to >= effective_from",
+            name="effective_date_order",
+        ),
+        Index("ix_shifts_company_active", "company_id", "is_active"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    start_time: Mapped[time] = mapped_column(Time, nullable=False)
+    end_time: Mapped[time] = mapped_column(Time, nullable=False)
+    is_overnight: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    working_days: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    grace_period_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    break_duration_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[date | None] = mapped_column(Date)
+    recurrence: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    version: Mapped[int] = mapped_column(default=1, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+    )
+
+
+class ShiftAssignment(Base):
+    __tablename__ = "shift_assignments"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "shift_id"],
+            ["shifts.company_id", "shifts.id"],
+            name="fk_shift_assignments_company_shift",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_shift_assignments_company_membership",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "branch_id"],
+            ["branches.company_id", "branches.id"],
+            name="fk_shift_assignments_company_branch",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "assigned_by_membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_shift_assignments_company_actor",
+        ),
+        CheckConstraint(
+            "(membership_id IS NULL) <> (branch_id IS NULL)",
+            name="one_target",
+        ),
+        CheckConstraint(
+            "effective_to IS NULL OR effective_to >= effective_from",
+            name="date_order",
+        ),
+        Index(
+            "ix_shift_assignments_employee_dates",
+            "company_id",
+            "membership_id",
+            "effective_from",
+            "effective_to",
+        ),
+        Index(
+            "ix_shift_assignments_branch_dates",
+            "company_id",
+            "branch_id",
+            "effective_from",
+            "effective_to",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    shift_id: Mapped[UUID] = mapped_column(nullable=False)
+    membership_id: Mapped[UUID | None]
+    branch_id: Mapped[UUID | None]
+    assigned_by_membership_id: Mapped[UUID] = mapped_column(nullable=False)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[date | None] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class ShiftException(Base):
+    __tablename__ = "shift_exceptions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "shift_id"],
+            ["shifts.company_id", "shifts.id"],
+            name="fk_shift_exceptions_company_shift",
+        ),
+        UniqueConstraint(
+            "company_id",
+            "shift_id",
+            "exception_date",
+            name="uq_shift_exceptions_company_shift_date",
+        ),
+        Index("ix_shift_exceptions_company_date", "company_id", "exception_date"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    shift_id: Mapped[UUID] = mapped_column(nullable=False)
+    exception_date: Mapped[date] = mapped_column(Date, nullable=False)
+    is_working_day: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    override_start_time: Mapped[time | None] = mapped_column(Time)
+    override_end_time: Mapped[time | None] = mapped_column(Time)
+    note: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

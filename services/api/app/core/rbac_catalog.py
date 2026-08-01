@@ -23,6 +23,8 @@ BUILTIN_PERMISSIONS: dict[str, str] = {
     "departments:manage": "Create and update company departments",
     "assignments:view": "View employee branch assignment history",
     "assignments:manage": "Assign and transfer employees between branches",
+    "shifts:view": "View company shifts and assignments",
+    "shifts:manage": "Create and assign company shifts",
 }
 
 ROLE_PERMISSION_CODES: dict[str, frozenset[str]] = {
@@ -40,6 +42,8 @@ ROLE_PERMISSION_CODES: dict[str, frozenset[str]] = {
             "departments:manage",
             "assignments:view",
             "assignments:manage",
+            "shifts:view",
+            "shifts:manage",
         }
     ),
     "HR_OFFICER": frozenset(
@@ -55,6 +59,8 @@ ROLE_PERMISSION_CODES: dict[str, frozenset[str]] = {
             "departments:manage",
             "assignments:view",
             "assignments:manage",
+            "shifts:view",
+            "shifts:manage",
         }
     ),
     "SUPERVISOR": frozenset(
@@ -64,9 +70,10 @@ ROLE_PERMISSION_CODES: dict[str, frozenset[str]] = {
             "branches:view",
             "departments:view",
             "assignments:view",
+            "shifts:view",
         }
     ),
-    "EMPLOYEE": frozenset({"branches:view", "departments:view"}),
+    "EMPLOYEE": frozenset({"branches:view", "departments:view", "shifts:view"}),
 }
 
 

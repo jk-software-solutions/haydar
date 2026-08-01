@@ -10,7 +10,15 @@ from app.models.identity import (
     RolePermission,
     User,
 )
-from app.models.organization import Branch, Department, EmployeeBranchAssignment, EmployeeProfile
+from app.models.organization import (
+    Branch,
+    Department,
+    EmployeeBranchAssignment,
+    EmployeeProfile,
+    Shift,
+    ShiftAssignment,
+    ShiftException,
+)
 
 __all__ = [
     "Company",
@@ -29,4 +37,7 @@ __all__ = [
     "Branch",
     "Department",
     "EmployeeBranchAssignment",
+    "Shift",
+    "ShiftAssignment",
+    "ShiftException",
 ]

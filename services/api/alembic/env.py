@@ -23,6 +23,9 @@ from app.models import (
     RefreshSession,
     Role,
     RolePermission,
+    Shift,
+    ShiftAssignment,
+    ShiftException,
     User,
 )
 
@@ -46,6 +49,9 @@ _INCLUDED_MODELS = (
     RefreshSession,
     Role,
     RolePermission,
+    Shift,
+    ShiftAssignment,
+    ShiftException,
     User,
 )
 target_metadata = Base.metadata

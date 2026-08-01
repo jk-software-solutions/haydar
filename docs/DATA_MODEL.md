@@ -68,6 +68,13 @@ branch, and actor through composite company foreign keys; a partial unique index
 permits only one open assignment per employee while retaining immutable transfer
 history.
 
+Migration `20260801_0007` implements shifts, employee/branch shift assignments,
+and dated shift exceptions. Shifts persist server-derived overnight state,
+working weekdays, grace/break rules, effective range, recurrence, active state,
+and optimistic version. Assignment rows target exactly one same-tenant employee
+or branch and are checked for effective-range overlap before write. Exceptions
+provide one tenant-bound override per shift/date.
+
 ## Attendance
 
 - `attendance_records`: one calculated work session with employee, branch,

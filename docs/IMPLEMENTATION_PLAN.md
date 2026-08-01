@@ -296,6 +296,24 @@ cross-tenant transfer tests, Alembic upgrade/head verification, and direct
 picker remain in progress; no Google Maps credential is requested until that UI
 integration begins.
 
+### Shift scheduling backend checkpoint
+
+Migration `20260801_0007_shifts` is applied to `haydar_dev`. It adds persisted
+shift permissions, normalized tenant shifts, employee-or-branch effective
+assignments, and dated shift exceptions with composite company foreign keys and
+database date/target constraints.
+
+The real `/shifts` API now supports CRUD/soft archive, server-derived overnight
+state, unique workdays, grace and break rules, effective dates, recurrence,
+assignment overlap checks, employee self-history, and holiday/time overrides.
+Client payloads cannot supply `company_id` or `is_overnight`; every reference is
+resolved under the authenticated tenant and every management write is
+permission-gated and audited where applicable.
+
+Ruff formatting/lint, strict mypy, all 15 PostgreSQL-backed API tests, Alembic
+upgrade/head verification, and direct `haydar_app` runtime reads of the three new
+tables pass. Shift and assignment management interfaces remain Day 9/10 UI work.
+
 ### Company branch management web checkpoint
 
 The Company Admin portal now reads the authenticated tenant's real branch list

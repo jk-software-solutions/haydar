@@ -37,6 +37,8 @@ class Permission(StrEnum):
     DEPARTMENTS_MANAGE = "departments:manage"
     ASSIGNMENTS_VIEW = "assignments:view"
     ASSIGNMENTS_MANAGE = "assignments:manage"
+    SHIFTS_VIEW = "shifts:view"
+    SHIFTS_MANAGE = "shifts:manage"
 
 
 @dataclass(frozen=True, slots=True)

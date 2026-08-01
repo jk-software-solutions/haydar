@@ -134,6 +134,24 @@ Branch coordinates and radius are validated in both API schemas and PostgreSQL
 constraints. Codes are unique inside a company, only one current branch
 assignment can exist per membership, and write payloads forbid `company_id`.
 
+### Implemented shifts contract
+
+- `/shifts` supports tenant-scoped create, paginated list, detail, optimistic
+  update, and soft archive.
+- Shift writes accept local start/end times, unique weekday numbers `0..6`,
+  grace/break minutes, effective range, and recurrence metadata. The server
+  computes `is_overnight`; clients cannot supply it.
+- `POST /shifts/assignments` assigns one shift to either an employee or branch
+  for an effective range and rejects any overlapping target assignment.
+- `GET /shifts/assignments/me` returns the authenticated employee's direct shift
+  assignments only.
+- `POST /shifts/{shift_id}/exceptions` records a non-working day or paired
+  start/end override; duplicate shift/date exceptions are rejected.
+
+Shift, employee, branch, assignment actor, and exception references are bound by
+composite tenant constraints. Assignment dates must remain inside the selected
+shift's effective period.
+
 ## Concurrency and idempotency
 
 `Idempotency-Key` is mandatory for check-in/out, manual corrections, device
