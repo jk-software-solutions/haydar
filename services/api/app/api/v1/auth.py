@@ -28,6 +28,7 @@ from app.models.identity import (
     RefreshSession,
     User,
 )
+from app.models.organization import EmployeeProfile
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_session)]
@@ -269,6 +270,13 @@ async def register_company(
     )
     session.add(membership)
     await session.flush()
+    session.add(
+        EmployeeProfile(
+            company_id=company.id,
+            membership_id=membership.id,
+            display_name=user.full_name,
+        )
+    )
     session.add(
         MembershipRole(
             company_id=company.id,

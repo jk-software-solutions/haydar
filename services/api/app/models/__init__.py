@@ -10,6 +10,7 @@ from app.models.identity import (
     RolePermission,
     User,
 )
+from app.models.organization import EmployeeProfile
 
 __all__ = [
     "Company",
@@ -24,4 +25,5 @@ __all__ = [
     "AuditLog",
     "Device",
     "DeviceChangeRequest",
+    "EmployeeProfile",
 ]

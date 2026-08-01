@@ -225,6 +225,26 @@ management visibility. Day 6 is source-complete against the PostgreSQL-backed
 device API. Physical USB-device validation of secure-storage persistence and a
 two-device replacement flow remains required before stable-milestone promotion.
 
+### Organization profiles backend checkpoint
+
+Migration `20260801_0005_organization_profiles` is applied to `haydar_dev`. It
+adds Arabic-first company locale, timezone, and country settings and backfills
+one tenant-owned employee profile for every existing company membership. New
+owner registrations and invitation activations create their profile in the same
+transaction as the membership.
+
+Real `/companies/current` and `/employees` APIs now provide tenant-scoped
+settings, self-profile, searchable employee list/detail, and versioned update
+flows. Company and membership identity are never accepted from write payloads;
+composite constraints, session-derived scoping, permissions, row locks,
+optimistic versions, and immutable audit events protect changes. Cross-tenant
+reads and writes return not found.
+
+Ruff formatting/lint, strict mypy, all 12 PostgreSQL-backed API tests, Alembic
+upgrade/head verification, and a direct `haydar_app` runtime-role read of the
+new table pass. Day 7 web employee management and the complete role-aware mobile
+navigation remain in progress.
+
 ## Checkpoint workflow
 
 Every logical task must:

@@ -37,6 +37,20 @@ def problem_payload(
     return payload
 
 
+def serializable_validation_errors(exc: RequestValidationError) -> list[dict[str, Any]]:
+    errors: list[dict[str, Any]] = []
+    for error in exc.errors():
+        item = dict(error)
+        context = item.get("ctx")
+        if isinstance(context, dict):
+            item["ctx"] = {
+                key: str(value) if isinstance(value, Exception) else value
+                for key, value in context.items()
+            }
+        errors.append(item)
+    return errors
+
+
 def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ProblemError)
     async def handle_problem(_request: Request, exc: ProblemError) -> JSONResponse:
@@ -61,6 +75,6 @@ def register_error_handlers(app: FastAPI) -> None:
                 code="validation_error",
                 title="Request validation failed",
                 detail="One or more fields are invalid.",
-                field_errors=exc.errors(),
+                field_errors=serializable_validation_errors(exc),
             ),
         )

@@ -15,6 +15,7 @@ from app.core.errors import ProblemError
 from app.core.security import hash_password
 from app.db.session import get_session
 from app.models.identity import Company, CompanyMembership, Invitation, MembershipRole, User
+from app.models.organization import EmployeeProfile
 
 router = APIRouter()
 activation_router = APIRouter()
@@ -214,6 +215,13 @@ async def activate_invitation(
     )
     session.add(membership)
     await session.flush()
+    session.add(
+        EmployeeProfile(
+            company_id=invitation.company_id,
+            membership_id=membership.id,
+            display_name=user.full_name,
+        )
+    )
     session.add(
         MembershipRole(
             company_id=invitation.company_id,

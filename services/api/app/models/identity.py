@@ -44,6 +44,13 @@ class Company(Base):
     technical_name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+    default_locale: Mapped[str] = mapped_column(String(8), default="ar", nullable=False)
+    timezone: Mapped[str] = mapped_column(
+        String(64),
+        default="Asia/Riyadh",
+        nullable=False,
+    )
+    country_code: Mapped[str] = mapped_column(String(2), default="SA", nullable=False)
     version: Mapped[int] = mapped_column(default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(

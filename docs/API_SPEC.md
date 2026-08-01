@@ -98,6 +98,24 @@ configured provider without storing its plaintext value.
 
 The API never accepts membership or company identity in device payloads.
 
+### Implemented organization contract
+
+- `GET /companies/current` returns settings for the authenticated company only.
+- `PATCH /companies/current` updates display name, default locale, timezone, and
+  country code; it requires `settings:manage` and the current optimistic
+  `version`.
+- `GET /employees/me` returns the current membership's own tenant profile.
+- `GET /employees?page=1&page_size=25&search=` returns a permission-gated,
+  tenant-scoped employee list.
+- `GET /employees/{membership_id}` returns an employee only when the membership
+  belongs to the authenticated tenant.
+- `PATCH /employees/{membership_id}` updates employment profile fields, requires
+  `members:manage`, and rejects stale versions with `concurrency_conflict`.
+
+Company and employee write payloads forbid `company_id`. Cross-tenant identifiers
+are indistinguishable from missing resources, and successful settings/profile
+updates append immutable audit events.
+
 ## Concurrency and idempotency
 
 `Idempotency-Key` is mandatory for check-in/out, manual corrections, device

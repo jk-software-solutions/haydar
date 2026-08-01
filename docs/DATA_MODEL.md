@@ -52,6 +52,13 @@ Assignments and references use `(company_id, referenced_id)` constraints.
 Overlap checks combine database exclusions where practical with service-level
 validation and transaction locking.
 
+Migration `20260801_0005` implements company locale/timezone/country settings
+and one employee profile per company membership. Profiles include tenant-local
+display name, employee number, contact and job metadata, employment type, hire
+date, preferred locale, attendance eligibility, optimistic version, and UTC
+timestamps. Composite membership foreign keys and tenant-local employee-number
+uniqueness prevent cross-company references and collisions.
+
 ## Attendance
 
 - `attendance_records`: one calculated work session with employee, branch,
