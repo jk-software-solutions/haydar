@@ -21,7 +21,13 @@ from app.core.security import (
     verify_password,
 )
 from app.db.session import get_session
-from app.models.identity import Company, CompanyMembership, RefreshSession, User
+from app.models.identity import (
+    Company,
+    CompanyMembership,
+    MembershipRole,
+    RefreshSession,
+    User,
+)
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_session)]
@@ -262,6 +268,14 @@ async def register_company(
         role_code="OWNER",
     )
     session.add(membership)
+    await session.flush()
+    session.add(
+        MembershipRole(
+            company_id=company.id,
+            membership_id=membership.id,
+            role_code="OWNER",
+        )
+    )
     await session.flush()
     response = await issue_tokens(
         session=session,

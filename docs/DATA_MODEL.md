@@ -27,6 +27,11 @@
   roles are tenant-owned.
 - `invitations`: hashed token/code, target contact, company, intended roles,
   expiry, use and revocation metadata.
+
+Migrations currently implement the five built-in company roles, persisted
+domain/action permission mappings, composite tenant-bound membership roles, and
+hashed one-time invitations. Custom tenant roles extend these tables later
+rather than introducing a parallel authorization system.
 - `devices`: installation identity, public key, approval/revocation state and
   last-seen metadata.
 - `device_change_requests`: old/new devices, reason, workflow and decision.

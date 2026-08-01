@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
+from app.core.rbac_catalog import seed_builtin_rbac
 from app.db.base import Base
 from app.db.session import get_session
 from app.main import app
@@ -38,6 +39,10 @@ async def db_client() -> AsyncIterator[httpx.AsyncClient]:
     async with migration_engine.begin() as connection:
         await connection.run_sync(Base.metadata.drop_all)
         await connection.run_sync(Base.metadata.create_all)
+
+    async with sessionmaker() as seed_session:
+        await seed_builtin_rbac(seed_session)
+        await seed_session.commit()
 
     async def override_session() -> AsyncIterator[AsyncSession]:
         async with sessionmaker() as session:

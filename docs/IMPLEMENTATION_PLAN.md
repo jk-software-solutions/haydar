@@ -147,6 +147,22 @@ Persistent role/permission administration, existing-identity invitation
 acceptance, external email/SMS delivery, and the Next.js company UI remain the
 unfinished portions of Day 5.
 
+### Persistent RBAC checkpoint
+
+Migration `20260801_0003_persistent_rbac` is applied to `haydar_dev`. It creates
+and seeds `roles`, `permissions`, `role_permissions`, and tenant-bound
+`membership_roles`, then backfills every existing membership from its original
+role. New owner and invited memberships write their role assignment in the same
+transaction as account creation.
+
+Protected invitation operations now query persisted membership-role and
+role-permission records using both `company_id` and `membership_id`; they no
+longer trust a hard-coded role map. Ruff format/lint, strict mypy, all 9 API
+tests, and Alembic head verification pass against native PostgreSQL.
+
+Custom-role administration and the permission-aware Next.js company portal are
+the remaining Day 5 implementation work.
+
 ## Checkpoint workflow
 
 Every logical task must:

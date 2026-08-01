@@ -3,9 +3,17 @@ from enum import StrEnum
 from uuid import UUID
 
 from fastapi import status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ProblemError
-from app.models.identity import Company, CompanyMembership, User
+from app.models.identity import (
+    Company,
+    CompanyMembership,
+    MembershipRole,
+    RolePermission,
+    User,
+)
 
 
 class RoleCode(StrEnum):
@@ -21,19 +29,6 @@ class Permission(StrEnum):
     MEMBERS_CREATE = "members:create"
     MEMBERS_MANAGE = "members:manage"
     SETTINGS_MANAGE = "settings:manage"
-
-
-ROLE_PERMISSIONS: dict[RoleCode, frozenset[Permission]] = {
-    RoleCode.OWNER: frozenset(Permission),
-    RoleCode.MANAGER: frozenset(
-        {Permission.MEMBERS_VIEW, Permission.MEMBERS_CREATE, Permission.MEMBERS_MANAGE}
-    ),
-    RoleCode.HR_OFFICER: frozenset(
-        {Permission.MEMBERS_VIEW, Permission.MEMBERS_CREATE, Permission.MEMBERS_MANAGE}
-    ),
-    RoleCode.SUPERVISOR: frozenset({Permission.MEMBERS_VIEW}),
-    RoleCode.EMPLOYEE: frozenset(),
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,17 +51,25 @@ def tenant_context(
     )
 
 
-def require_permission(context: TenantContext, permission: Permission) -> None:
-    try:
-        role = RoleCode(context.membership.role_code)
-    except ValueError as exc:
-        raise ProblemError(
-            status=status.HTTP_403_FORBIDDEN,
-            code="permission_denied",
-            title="Permission denied",
-            detail="The membership role is not recognized.",
-        ) from exc
-    if permission not in ROLE_PERMISSIONS[role]:
+async def require_permission(
+    session: AsyncSession,
+    context: TenantContext,
+    permission: Permission,
+) -> None:
+    granted = await session.scalar(
+        select(RolePermission.permission_code)
+        .join(
+            MembershipRole,
+            MembershipRole.role_code == RolePermission.role_code,
+        )
+        .where(
+            MembershipRole.company_id == context.company_id,
+            MembershipRole.membership_id == context.membership.id,
+            RolePermission.permission_code == permission.value,
+        )
+        .limit(1)
+    )
+    if granted is None:
         raise ProblemError(
             status=status.HTTP_403_FORBIDDEN,
             code="permission_denied",

@@ -37,6 +37,12 @@ companies in `haydar_test` and prove that list/detail reads cannot cross the
 tenant boundary. Access tokens are accepted only while their referenced refresh
 session, membership, user, and company are all active.
 
+Authorization grants are persisted in `membership_roles` and
+`role_permissions`. Policy queries require the authenticated composite
+`(company_id, membership_id)` identity, so a matching role assignment from
+another tenant cannot authorize an action. Built-in policy changes are shipped
+as reviewed migrations and covered by permission-denial integration tests.
+
 ## Device and attendance security
 
 Each installation creates a random identifier and device-held signing key.

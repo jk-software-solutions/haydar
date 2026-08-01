@@ -14,7 +14,7 @@ from app.core.authorization import Permission, RoleCode, require_permission, ten
 from app.core.errors import ProblemError
 from app.core.security import hash_password
 from app.db.session import get_session
-from app.models.identity import Company, CompanyMembership, Invitation, User
+from app.models.identity import Company, CompanyMembership, Invitation, MembershipRole, User
 
 router = APIRouter()
 activation_router = APIRouter()
@@ -83,7 +83,7 @@ async def create_invitation(
     session: DatabaseSession,
 ) -> CreatedInvitationResponse:
     context = tenant_context(auth_session)
-    require_permission(context, Permission.MEMBERS_CREATE)
+    await require_permission(session, context, Permission.MEMBERS_CREATE)
     if payload.role_code not in INVITABLE_ROLES:
         raise ProblemError(
             status=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -134,7 +134,7 @@ async def list_invitations(
     page_size: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> InvitationListResponse:
     context = tenant_context(auth_session)
-    require_permission(context, Permission.MEMBERS_VIEW)
+    await require_permission(session, context, Permission.MEMBERS_VIEW)
     criteria = Invitation.company_id == context.company_id
     total = await session.scalar(select(func.count()).select_from(Invitation).where(criteria))
     invitations = await session.scalars(
@@ -159,7 +159,7 @@ async def get_invitation(
     session: DatabaseSession,
 ) -> InvitationResponse:
     context = tenant_context(auth_session)
-    require_permission(context, Permission.MEMBERS_VIEW)
+    await require_permission(session, context, Permission.MEMBERS_VIEW)
     invitation = await session.scalar(
         select(Invitation).where(
             Invitation.company_id == context.company_id,
@@ -213,6 +213,14 @@ async def activate_invitation(
         role_code=invitation.role_code,
     )
     session.add(membership)
+    await session.flush()
+    session.add(
+        MembershipRole(
+            company_id=invitation.company_id,
+            membership_id=membership.id,
+            role_code=invitation.role_code,
+        )
+    )
     await session.flush()
     invitation.status = "accepted"
     invitation.accepted_at = now

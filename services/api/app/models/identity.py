@@ -128,3 +128,42 @@ class Invitation(Base):
         default=utc_now,
         onupdate=utc_now,
     )
+
+
+class Role(Base):
+    __tablename__ = "roles"
+
+    code: Mapped[str] = mapped_column(String(40), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    is_system: Mapped[bool] = mapped_column(default=True, nullable=False)
+
+
+class PermissionDefinition(Base):
+    __tablename__ = "permissions"
+
+    code: Mapped[str] = mapped_column(String(100), primary_key=True)
+    description: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
+class RolePermission(Base):
+    __tablename__ = "role_permissions"
+
+    role_code: Mapped[str] = mapped_column(ForeignKey("roles.code"), primary_key=True)
+    permission_code: Mapped[str] = mapped_column(ForeignKey("permissions.code"), primary_key=True)
+
+
+class MembershipRole(Base):
+    __tablename__ = "membership_roles"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_membership_roles_company_membership",
+        ),
+        Index("ix_membership_roles_company", "company_id", "role_code"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(primary_key=True)
+    membership_id: Mapped[UUID] = mapped_column(primary_key=True)
+    role_code: Mapped[str] = mapped_column(ForeignKey("roles.code"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
