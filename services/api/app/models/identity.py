@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -188,4 +189,93 @@ class MembershipRole(Base):
     company_id: Mapped[UUID] = mapped_column(primary_key=True)
     membership_id: Mapped[UUID] = mapped_column(primary_key=True)
     role_code: Mapped[str] = mapped_column(ForeignKey("roles.code"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class MembershipPermissionOverride(Base):
+    __tablename__ = "membership_permission_overrides"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_membership_permission_overrides_company_member",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "updated_by_membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_membership_permission_overrides_company_actor",
+        ),
+        Index("ix_membership_permission_overrides_company", "company_id", "membership_id"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(primary_key=True)
+    membership_id: Mapped[UUID] = mapped_column(primary_key=True)
+    permission_code: Mapped[str] = mapped_column(ForeignKey("permissions.code"), primary_key=True)
+    allowed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    updated_by_membership_id: Mapped[UUID] = mapped_column(nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class MembershipBranchScope(Base):
+    __tablename__ = "membership_branch_scopes"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_membership_branch_scopes_company_member",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "branch_id"],
+            ["branches.company_id", "branches.id"],
+            name="fk_membership_branch_scopes_company_branch",
+        ),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(primary_key=True)
+    membership_id: Mapped[UUID] = mapped_column(primary_key=True)
+    branch_id: Mapped[UUID] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class MembershipDepartmentScope(Base):
+    __tablename__ = "membership_department_scopes"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_membership_department_scopes_company_member",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "department_id"],
+            ["departments.company_id", "departments.id"],
+            name="fk_membership_department_scopes_company_department",
+        ),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(primary_key=True)
+    membership_id: Mapped[UUID] = mapped_column(primary_key=True)
+    department_id: Mapped[UUID] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class MembershipGroupScope(Base):
+    __tablename__ = "membership_group_scopes"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_membership_group_scopes_company_member",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "group_id"],
+            ["organization_groups.company_id", "organization_groups.id"],
+            name="fk_membership_group_scopes_company_group",
+        ),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(primary_key=True)
+    membership_id: Mapped[UUID] = mapped_column(primary_key=True)
+    group_id: Mapped[UUID] = mapped_column(primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

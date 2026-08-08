@@ -8,7 +8,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import CurrentAuthSession
-from app.core.authorization import Permission, require_permission, tenant_context
+from app.core.authorization import (
+    Permission,
+    require_membership_scope,
+    require_permission,
+    tenant_context,
+    visible_membership_ids,
+)
 from app.core.errors import ProblemError
 from app.db.session import get_session
 from app.models.devices import AuditLog, Device, DeviceChangeRequest
@@ -228,6 +234,9 @@ async def list_device_changes(
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.DEVICES_VIEW)
     criteria = [DeviceChangeRequest.company_id == context.company_id]
+    visible = await visible_membership_ids(session, context)
+    if visible is not None:
+        criteria.append(DeviceChangeRequest.membership_id.in_(visible))
     if request_status:
         criteria.append(DeviceChangeRequest.status == request_status)
     total = await session.scalar(
@@ -273,6 +282,7 @@ async def approve_device_change(
             title="Device change not found",
             detail="No pending device change exists in the current company.",
         )
+    await require_membership_scope(session, context, change.membership_id)
     devices = await session.scalars(
         select(Device)
         .where(
@@ -340,6 +350,7 @@ async def reject_device_change(
             title="Device change not found",
             detail="No pending device change exists in the current company.",
         )
+    await require_membership_scope(session, context, change.membership_id)
     requested = await session.scalar(
         select(Device).where(
             Device.company_id == context.company_id,

@@ -13,7 +13,17 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import CurrentAuthSession
-from app.core.authorization import Permission, TenantContext, require_permission, tenant_context
+from app.core.authorization import (
+    Permission,
+    TenantContext,
+    require_branch_scope,
+    require_group_scope,
+    require_membership_scope,
+    require_permission,
+    require_unrestricted_scope,
+    tenant_context,
+    visible_membership_ids,
+)
 from app.core.errors import ProblemError
 from app.core.subscription_catalog import active_subscription
 from app.db.session import get_session
@@ -21,6 +31,7 @@ from app.models.attendance import (
     AttendanceEvent,
     AttendanceRecord,
     BranchQrToken,
+    BranchQrTokenUse,
     PermissionRequest,
     PresenceRecipient,
     PresenceRequest,
@@ -30,6 +41,7 @@ from app.models.identity import CompanyMembership
 from app.models.organization import (
     Branch,
     EmployeeBranchAssignment,
+    EmployeeGroupMembership,
     EmployeeProfile,
     Shift,
     ShiftAssignment,
@@ -164,13 +176,14 @@ class PresenceCreateRequest(BaseModel):
 
     membership_ids: list[UUID] = Field(default_factory=list, max_length=500)
     branch_id: UUID | None = None
+    group_id: UUID | None = None
     message: str = Field(default="Confirm your presence", min_length=2, max_length=500)
     deadline_seconds: int = Field(default=300, ge=30, le=3600)
 
     @model_validator(mode="after")
     def require_target(self) -> "PresenceCreateRequest":
-        if not self.membership_ids and self.branch_id is None:
-            raise ValueError("membership_ids or branch_id is required")
+        if not self.membership_ids and self.branch_id is None and self.group_id is None:
+            raise ValueError("membership_ids, branch_id, or group_id is required")
         return self
 
 
@@ -396,6 +409,7 @@ async def validate_location_and_qr(
     branch: Branch,
     payload: AttendanceActionRequest,
     now: datetime,
+    action: Literal["check_in", "check_out"],
 ) -> int:
     subscription = await active_subscription(session, context.company_id)
     if subscription is None:
@@ -428,13 +442,15 @@ async def validate_location_and_qr(
         )
     if payload.method == "qr":
         token = await session.scalar(
-            select(BranchQrToken).where(
+            select(BranchQrToken)
+            .where(
                 BranchQrToken.company_id == context.company_id,
                 BranchQrToken.branch_id == branch.id,
                 BranchQrToken.token_hash == qr_hash(payload.qr_token or ""),
                 BranchQrToken.expires_at > now,
                 BranchQrToken.revoked_at.is_(None),
             )
+            .with_for_update()
         )
         if token is None:
             raise ProblemError(
@@ -443,6 +459,29 @@ async def validate_location_and_qr(
                 title="QR code is invalid",
                 detail="The QR code is expired or belongs to another branch.",
             )
+        replay = await session.scalar(
+            select(BranchQrTokenUse.id).where(
+                BranchQrTokenUse.company_id == context.company_id,
+                BranchQrTokenUse.token_id == token.id,
+                BranchQrTokenUse.membership_id == context.membership.id,
+                BranchQrTokenUse.action == action,
+            )
+        )
+        if replay is not None:
+            raise ProblemError(
+                status=status.HTTP_409_CONFLICT,
+                code="qr_token_replayed",
+                title="QR code already used",
+                detail="This QR code has already been used for this attendance action.",
+            )
+        session.add(
+            BranchQrTokenUse(
+                company_id=context.company_id,
+                token_id=token.id,
+                membership_id=context.membership.id,
+                action=action,
+            )
+        )
     return distance
 
 
@@ -459,7 +498,7 @@ async def check_in(
     branch, shift, work_date, scheduled_start, scheduled_end = await active_branch_and_shift(
         session, context, now
     )
-    distance = await validate_location_and_qr(session, context, branch, payload, now)
+    distance = await validate_location_and_qr(session, context, branch, payload, now, "check_in")
     existing = await session.scalar(
         select(AttendanceRecord.id).where(
             AttendanceRecord.company_id == context.company_id,
@@ -555,7 +594,7 @@ async def check_out(
             title="Branch missing",
             detail="The attendance branch no longer exists.",
         )
-    distance = await validate_location_and_qr(session, context, branch, payload, now)
+    distance = await validate_location_and_qr(session, context, branch, payload, now, "check_out")
     permission = await session.scalar(
         select(PermissionRequest.id).where(
             PermissionRequest.company_id == context.company_id,
@@ -634,9 +673,14 @@ async def list_attendance(
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.ATTENDANCE_VIEW)
     criteria = [AttendanceRecord.company_id == context.company_id]
+    visible = await visible_membership_ids(session, context)
+    if visible is not None:
+        criteria.append(AttendanceRecord.membership_id.in_(visible))
     if membership_id:
+        await require_membership_scope(session, context, membership_id)
         criteria.append(AttendanceRecord.membership_id == membership_id)
     if branch_id:
+        await require_branch_scope(session, context, branch_id)
         criteria.append(AttendanceRecord.branch_id == branch_id)
     if record_status:
         criteria.append(AttendanceRecord.status == record_status)
@@ -661,6 +705,7 @@ async def reconcile_attendance(
 ) -> dict[str, int]:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.ATTENDANCE_MANAGE)
+    await require_unrestricted_scope(session, context)
     target_date = work_date or (date.today() - timedelta(days=1))
     now = datetime.now(UTC)
     missing_count = 0
@@ -807,6 +852,8 @@ async def create_manual_attendance(
 ) -> AttendanceRecordResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.ATTENDANCE_MANAGE)
+    await require_membership_scope(session, context, payload.membership_id)
+    await require_branch_scope(session, context, payload.branch_id)
     branch, shift = await validate_manual_targets(
         session, context, payload.membership_id, payload.branch_id, payload.shift_id
     )
@@ -864,7 +911,7 @@ async def create_manual_attendance(
     return record_response(record)
 
 
-@router.patch("/{record_id}", response_model=AttendanceRecordResponse)
+@router.patch("/records/{record_id}", response_model=AttendanceRecordResponse)
 async def correct_attendance(
     record_id: UUID,
     payload: CorrectAttendanceRequest,
@@ -885,6 +932,7 @@ async def correct_attendance(
             title="Attendance not found",
             detail="The record does not exist in this company.",
         )
+    await require_membership_scope(session, context, record.membership_id)
     if record.version != payload.version:
         raise ProblemError(
             status=409,
@@ -958,6 +1006,7 @@ async def create_qr_token(
 ) -> QrTokenResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.ATTENDANCE_MANAGE)
+    await require_branch_scope(session, context, payload.branch_id)
     branch = await session.scalar(
         select(Branch.id).where(
             Branch.company_id == context.company_id,
@@ -1038,6 +1087,9 @@ async def list_permission_requests(
         criteria.append(PermissionRequest.membership_id == context.membership.id)
     else:
         await require_permission(session, context, Permission.PERMISSIONS_VIEW)
+        visible = await visible_membership_ids(session, context)
+        if visible is not None:
+            criteria.append(PermissionRequest.membership_id.in_(visible))
     if request_status:
         criteria.append(PermissionRequest.status == request_status)
     items = await session.scalars(
@@ -1074,6 +1126,7 @@ async def review_permission_request(
             title="Permission request not found",
             detail="A pending request was not found in this company.",
         )
+    await require_membership_scope(session, context, item.membership_id)
     item.status = payload.decision
     item.review_comment = payload.comment
     item.reviewed_by_membership_id = context.membership.id
@@ -1103,6 +1156,7 @@ async def create_presence_request(
     await require_permission(session, context, Permission.PRESENCE_MANAGE)
     target_ids = set(payload.membership_ids)
     if payload.branch_id:
+        await require_branch_scope(session, context, payload.branch_id)
         branch_members = await session.scalars(
             select(EmployeeBranchAssignment.membership_id).where(
                 EmployeeBranchAssignment.company_id == context.company_id,
@@ -1111,6 +1165,15 @@ async def create_presence_request(
             )
         )
         target_ids.update(branch_members)
+    if payload.group_id:
+        await require_group_scope(session, context, payload.group_id)
+        group_members = await session.scalars(
+            select(EmployeeGroupMembership.membership_id).where(
+                EmployeeGroupMembership.company_id == context.company_id,
+                EmployeeGroupMembership.group_id == payload.group_id,
+            )
+        )
+        target_ids.update(group_members)
     valid_ids = set(
         await session.scalars(
             select(CompanyMembership.id).where(
@@ -1127,10 +1190,19 @@ async def create_presence_request(
             title="Presence target not found",
             detail="Every recipient must be an active member of this company.",
         )
+    visible = await visible_membership_ids(session, context)
+    if visible is not None and not target_ids.issubset(visible):
+        raise ProblemError(
+            status=404,
+            code="presence_target_not_found",
+            title="Presence target not found",
+            detail="Every recipient must belong to the current access scope.",
+        )
     request = PresenceRequest(
         company_id=context.company_id,
         created_by_membership_id=context.membership.id,
         branch_id=payload.branch_id,
+        group_id=payload.group_id,
         message=payload.message,
         deadline_at=datetime.now(UTC) + timedelta(seconds=payload.deadline_seconds),
     )
@@ -1187,6 +1259,9 @@ async def list_presence_requests(
         criteria.append(PresenceRecipient.membership_id == context.membership.id)
     else:
         await require_permission(session, context, Permission.PRESENCE_MANAGE)
+        visible = await visible_membership_ids(session, context)
+        if visible is not None:
+            criteria.append(PresenceRecipient.membership_id.in_(visible))
     rows = (
         await session.execute(
             select(PresenceRecipient, PresenceRequest)

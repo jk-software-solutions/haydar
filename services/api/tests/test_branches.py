@@ -105,7 +105,7 @@ async def test_branch_department_crud_is_tenant_scoped(
 
     employee_list = await db_client.get("/api/v1/branches", headers=headers(employee))
     assert employee_list.status_code == 200
-    assert employee_list.json()["total"] == 1
+    assert employee_list.json()["total"] == 0
 
     forbidden_create = await db_client.post(
         "/api/v1/branches",

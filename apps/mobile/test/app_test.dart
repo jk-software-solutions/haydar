@@ -91,6 +91,12 @@ void main() {
       companyName: 'My Company',
       fullName: 'Jawad Owner',
       roles: <String>['OWNER'],
+      permissions: <String>[
+        'members:view',
+        'members:create',
+        'devices:manage',
+        'permissions:manage',
+      ],
     );
     await tester.pumpWidget(
       ProviderScope(

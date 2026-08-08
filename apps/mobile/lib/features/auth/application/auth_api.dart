@@ -153,6 +153,8 @@ class AuthSession {
     required this.companyName,
     required this.fullName,
     required this.roles,
+    this.permissions = const <String>[],
+    this.scope = const AuthScope(),
   });
 
   factory AuthSession.fromJson(Map<String, dynamic> json) {
@@ -175,6 +177,9 @@ class AuthSession {
     final company =
         session['company'] as Map<String, dynamic>? ?? <String, dynamic>{};
     final roles = session['roles'] as List<dynamic>? ?? <dynamic>[];
+    final permissions = session['permissions'] as List<dynamic>? ?? <dynamic>[];
+    final scope =
+        session['scope'] as Map<String, dynamic>? ?? <String, dynamic>{};
     return AuthSession(
       accessToken: accessToken,
       refreshToken: refreshToken,
@@ -185,6 +190,10 @@ class AuthSession {
       companyName: company['display_name'] as String? ?? '',
       fullName: user['full_name'] as String? ?? '',
       roles: roles.map((role) => '$role').toList(growable: false),
+      permissions: permissions
+          .map((permission) => '$permission')
+          .toList(growable: false),
+      scope: AuthScope.fromJson(scope),
     );
   }
 
@@ -197,4 +206,35 @@ class AuthSession {
   final String companyName;
   final String fullName;
   final List<String> roles;
+  final List<String> permissions;
+  final AuthScope scope;
+
+  bool can(String permission) => permissions.contains(permission);
+}
+
+class AuthScope {
+  const AuthScope({
+    this.unrestricted = false,
+    this.branchIds = const <String>[],
+    this.departmentIds = const <String>[],
+    this.groupIds = const <String>[],
+  });
+
+  factory AuthScope.fromJson(Map<String, dynamic> json) => AuthScope(
+    unrestricted: json['unrestricted'] as bool? ?? false,
+    branchIds: (json['branch_ids'] as List<dynamic>? ?? <dynamic>[])
+        .map((value) => '$value')
+        .toList(growable: false),
+    departmentIds: (json['department_ids'] as List<dynamic>? ?? <dynamic>[])
+        .map((value) => '$value')
+        .toList(growable: false),
+    groupIds: (json['group_ids'] as List<dynamic>? ?? <dynamic>[])
+        .map((value) => '$value')
+        .toList(growable: false),
+  );
+
+  final bool unrestricted;
+  final List<String> branchIds;
+  final List<String> departmentIds;
+  final List<String> groupIds;
 }

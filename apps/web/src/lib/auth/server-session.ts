@@ -10,6 +10,13 @@ export type WebSession = {
   company: { id: string; display_name: string };
   membership_id: string;
   roles: string[];
+  permissions: string[];
+  scope: {
+    unrestricted: boolean;
+    branch_ids: string[];
+    department_ids: string[];
+    group_ids: string[];
+  };
 };
 
 type TokenResponse = {

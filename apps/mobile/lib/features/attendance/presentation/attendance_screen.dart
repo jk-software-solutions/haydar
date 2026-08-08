@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,14 +24,18 @@ class AttendanceScreen extends ConsumerStatefulWidget {
   ConsumerState<AttendanceScreen> createState() => _AttendanceScreenState();
 }
 
-class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
+class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
+    with WidgetsBindingObserver {
   final LocalAuthentication _localAuthentication = LocalAuthentication();
   List<AttendanceRecord> _records = <AttendanceRecord>[];
   List<PresenceChallenge> _presence = <PresenceChallenge>[];
+  List<GeofenceExitEvent> _geofenceExits = <GeofenceExitEvent>[];
   bool _loading = true;
   bool _submitting = false;
   String? _error;
   int? _lastDistance;
+  StreamSubscription<Position>? _locationSubscription;
+  String? _monitoredRecordId;
 
   bool get _ar => Localizations.localeOf(context).languageCode == 'ar';
   AttendanceRecord? get _openRecord =>
@@ -38,7 +44,22 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_stopGeofenceMonitor());
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _openRecord != null) {
+      unawaited(_reportResumeLocation(_openRecord!));
+    }
   }
 
   Future<void> _refresh() async {
@@ -51,18 +72,160 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
       final presence = widget.managerMode
           ? <PresenceChallenge>[]
           : await api.presenceChallenges(widget.session);
+      final geofenceExits =
+          widget.managerMode && widget.session.can('geofence_exits:view')
+          ? await api.listGeofenceExits(widget.session)
+          : <GeofenceExitEvent>[];
       if (mounted) {
         setState(() {
           _records = records;
           _presence = presence;
+          _geofenceExits = geofenceExits;
           _error = null;
         });
+        await _syncGeofenceMonitor();
       }
     } on Object catch (error) {
       if (mounted) setState(() => _error = _message(error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  String _locationPermissionCode(LocationPermission permission) {
+    return switch (permission) {
+      LocationPermission.always => 'always',
+      LocationPermission.whileInUse => 'while_in_use',
+      LocationPermission.deniedForever => 'denied_forever',
+      LocationPermission.denied => 'denied',
+      LocationPermission.unableToDetermine => 'denied',
+    };
+  }
+
+  Future<void> _reportMonitoringUnavailable(
+    AttendanceRecord record,
+    String permission,
+  ) async {
+    try {
+      await ref
+          .read(attendanceApiProvider)
+          .reportGeofenceSample(
+            session: widget.session,
+            recordId: record.id,
+            observedAt: DateTime.now().toUtc(),
+            source: 'resume_check',
+            locationPermission: permission,
+          );
+    } on Object {
+      // The next refresh/resume retries; attendance itself remains usable.
+    }
+  }
+
+  Future<void> _reportPosition(
+    AttendanceRecord record,
+    Position position,
+    String source,
+  ) async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      await ref
+          .read(attendanceApiProvider)
+          .reportGeofenceSample(
+            session: widget.session,
+            recordId: record.id,
+            observedAt: position.timestamp,
+            source: source,
+            locationPermission: _locationPermissionCode(permission),
+            latitude: position.latitude,
+            longitude: position.longitude,
+            accuracyM: position.accuracy.round(),
+          );
+    } on Object {
+      // Monitoring is best effort and will retry on the next location sample.
+    }
+  }
+
+  Future<void> _reportResumeLocation(AttendanceRecord record) async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      await _reportMonitoringUnavailable(record, 'service_disabled');
+      return;
+    }
+    final permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever ||
+        permission == LocationPermission.unableToDetermine) {
+      await _reportMonitoringUnavailable(
+        record,
+        _locationPermissionCode(permission),
+      );
+      return;
+    }
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 20),
+        ),
+      );
+      await _reportPosition(record, position, 'resume_check');
+    } on Object {
+      // The foreground stream remains the primary monitoring path.
+    }
+  }
+
+  Future<void> _syncGeofenceMonitor() async {
+    final record = _openRecord;
+    if (widget.managerMode || record == null) {
+      await _stopGeofenceMonitor();
+      return;
+    }
+    if (_locationSubscription != null && _monitoredRecordId == record.id) {
+      return;
+    }
+    await _stopGeofenceMonitor();
+    _monitoredRecordId = record.id;
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      await _reportMonitoringUnavailable(record, 'service_disabled');
+      return;
+    }
+    final permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever ||
+        permission == LocationPermission.unableToDetermine) {
+      await _reportMonitoringUnavailable(
+        record,
+        _locationPermissionCode(permission),
+      );
+      return;
+    }
+    _locationSubscription =
+        Geolocator.getPositionStream(
+          locationSettings: AndroidSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 25,
+            intervalDuration: const Duration(seconds: 30),
+            foregroundNotificationConfig: const ForegroundNotificationConfig(
+              notificationTitle: 'HADIR attendance monitoring',
+              notificationText:
+                  'Location is checked while your attendance session is open.',
+              notificationChannelName: 'Attendance location monitoring',
+              enableWakeLock: true,
+              setOngoing: true,
+            ),
+          ),
+        ).listen(
+          (position) => unawaited(
+            _reportPosition(record, position, 'foreground_service'),
+          ),
+          onError: (_) => unawaited(_reportResumeLocation(record)),
+        );
+  }
+
+  Future<void> _stopGeofenceMonitor() async {
+    final subscription = _locationSubscription;
+    _locationSubscription = null;
+    _monitoredRecordId = null;
+    await subscription?.cancel();
   }
 
   Future<Position> _position() async {
@@ -199,6 +362,59 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     }
   }
 
+  Future<void> _reviewGeofenceExit(
+    GeofenceExitEvent event,
+    String decision,
+  ) async {
+    final controller = TextEditingController();
+    final comment = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_ar ? 'سبب قرار المراجعة' : 'Review decision reason'),
+        content: TextField(
+          controller: controller,
+          minLines: 2,
+          maxLines: 4,
+          maxLength: 2000,
+          autofocus: true,
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(_ar ? 'إلغاء' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (controller.text.trim().length >= 3) {
+                Navigator.of(dialogContext).pop(controller.text.trim());
+              }
+            },
+            child: Text(_ar ? 'حفظ' : 'Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (comment == null || !mounted) return;
+    setState(() => _submitting = true);
+    try {
+      await ref
+          .read(attendanceApiProvider)
+          .reviewGeofenceExit(
+            session: widget.session,
+            eventId: event.id,
+            version: event.version,
+            decision: decision,
+            comment: comment,
+          );
+      await _refresh();
+    } on Object catch (error) {
+      if (mounted) setState(() => _error = _message(error));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
@@ -302,6 +518,84 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
             Text(
               '${_ar ? 'المسافة عن الفرع' : 'Distance from branch'}: $_lastDistance m',
             ),
+          if (widget.managerMode &&
+              widget.session.can('geofence_exits:view')) ...<Widget>[
+            const SizedBox(height: 28),
+            Text(
+              _ar ? 'مراجعة مغادرة النطاق' : 'Geofence exit review',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 10),
+            if (_geofenceExits.isEmpty)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    _ar
+                        ? 'لا توجد أحداث للمراجعة.'
+                        : 'No exit events to review.',
+                  ),
+                ),
+              ),
+            ..._geofenceExits.map(
+              (event) => Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      Text(
+                        event.status.replaceAll('_', ' '),
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      Text(
+                        '${event.detectedAt?.toLocal()} · ${event.distanceM ?? '—'}m · ${event.samples} samples',
+                      ),
+                      Text(
+                        '${_ar ? 'الموظف' : 'Employee'}: ${event.membershipId}',
+                      ),
+                      if (event.reviewComment != null)
+                        Text(event.reviewComment!)
+                      else if (event.requiresReview &&
+                          widget.session.can('geofence_exits:manage'))
+                        Wrap(
+                          spacing: 8,
+                          children: <Widget>[
+                            TextButton(
+                              onPressed: _submitting
+                                  ? null
+                                  : () => _reviewGeofenceExit(
+                                      event,
+                                      'confirmed_unauthorized',
+                                    ),
+                              child: Text(_ar ? 'تأكيد المخالفة' : 'Confirm'),
+                            ),
+                            TextButton(
+                              onPressed: _submitting
+                                  ? null
+                                  : () =>
+                                        _reviewGeofenceExit(event, 'dismissed'),
+                              child: Text(_ar ? 'استبعاد' : 'Dismiss'),
+                            ),
+                            TextButton(
+                              onPressed: _submitting
+                                  ? null
+                                  : () => _reviewGeofenceExit(
+                                      event,
+                                      'approved_exception',
+                                    ),
+                              child: Text(
+                                _ar ? 'استثناء معتمد' : 'Approve exception',
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 28),
           Text(
             _ar ? 'السجل الأخير' : 'Recent history',

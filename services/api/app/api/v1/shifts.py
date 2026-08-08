@@ -8,7 +8,14 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import CurrentAuthSession
-from app.core.authorization import Permission, require_permission, tenant_context
+from app.core.authorization import (
+    Permission,
+    require_branch_scope,
+    require_membership_scope,
+    require_permission,
+    require_unrestricted_scope,
+    tenant_context,
+)
 from app.core.errors import ProblemError
 from app.db.session import get_session
 from app.models.devices import AuditLog
@@ -244,6 +251,7 @@ async def create_shift(
 ) -> ShiftResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.SHIFTS_MANAGE)
+    await require_unrestricted_scope(session, context)
     await unique_shift_code(session, context.company_id, payload.code)
     shift = Shift(
         company_id=context.company_id,
@@ -328,6 +336,10 @@ async def create_shift_assignment(
 ) -> ShiftAssignmentResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.SHIFTS_MANAGE)
+    if payload.membership_id is not None:
+        await require_membership_scope(session, context, payload.membership_id)
+    elif payload.branch_id is not None:
+        await require_branch_scope(session, context, payload.branch_id)
     shift = await session.scalar(
         select(Shift).where(
             Shift.company_id == context.company_id,
@@ -434,6 +446,7 @@ async def create_shift_exception(
 ) -> ShiftExceptionResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.SHIFTS_MANAGE)
+    await require_unrestricted_scope(session, context)
     shift = await session.scalar(
         select(Shift).where(Shift.company_id == context.company_id, Shift.id == shift_id)
     )
@@ -519,6 +532,7 @@ async def update_shift(
 ) -> ShiftResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.SHIFTS_MANAGE)
+    await require_unrestricted_scope(session, context)
     shift = await session.scalar(
         select(Shift)
         .where(Shift.company_id == context.company_id, Shift.id == shift_id)
@@ -578,6 +592,7 @@ async def archive_shift(
 ) -> None:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.SHIFTS_MANAGE)
+    await require_unrestricted_scope(session, context)
     shift = await session.scalar(
         select(Shift)
         .where(Shift.company_id == context.company_id, Shift.id == shift_id)

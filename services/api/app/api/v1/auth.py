@@ -12,6 +12,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.authorization import (
+    effective_permission_codes,
+    membership_roles,
+    membership_scopes,
+    tenant_context,
+)
 from app.core.config import get_settings
 from app.core.errors import ProblemError
 from app.core.security import (
@@ -98,11 +104,20 @@ class CompanyResponse(BaseModel):
     display_name: str
 
 
+class SessionScopeResponse(BaseModel):
+    unrestricted: bool
+    branch_ids: list[UUID]
+    department_ids: list[UUID]
+    group_ids: list[UUID]
+
+
 class SessionResponse(BaseModel):
     user: UserResponse
     company: CompanyResponse
     membership_id: UUID
     roles: list[str]
+    permissions: list[str]
+    scope: SessionScopeResponse
 
 
 class AuthTokenResponse(BaseModel):
@@ -130,17 +145,28 @@ async def unique_company_technical_name(session: AsyncSession, display_name: str
         index += 1
 
 
-def session_response(
+async def session_response(
     *,
+    session: AsyncSession,
     user: User,
     company: Company,
     membership: CompanyMembership,
 ) -> SessionResponse:
+    context = tenant_context((user, company, membership))
+    roles = await membership_roles(session, company.id, membership.id)
+    scopes = await membership_scopes(session, context)
     return SessionResponse(
         user=UserResponse(id=user.id, email=user.email, full_name=user.full_name),
         company=CompanyResponse(id=company.id, display_name=company.display_name),
         membership_id=membership.id,
-        roles=[membership.role_code],
+        roles=roles or [membership.role_code],
+        permissions=await effective_permission_codes(session, company.id, membership.id),
+        scope=SessionScopeResponse(
+            unrestricted=scopes.unrestricted,
+            branch_ids=sorted(scopes.branch_ids),
+            department_ids=sorted(scopes.department_ids),
+            group_ids=sorted(scopes.group_ids),
+        ),
     )
 
 
@@ -172,7 +198,9 @@ async def issue_tokens(
         access_token=access_token,
         refresh_token=refresh_token,
         expires_in_seconds=settings.jwt_access_token_minutes * 60,
-        session=session_response(user=user, company=company, membership=membership),
+        session=await session_response(
+            session=session, user=user, company=company, membership=membership
+        ),
     )
 
 
@@ -450,9 +478,12 @@ async def confirm_password_reset(
 @router.get("/session", response_model=SessionResponse)
 async def get_current_session(
     auth_session: CurrentAuthSession,
+    session: DatabaseSession,
 ) -> SessionResponse:
     user, company, membership = auth_session
-    return session_response(user=user, company=company, membership=membership)
+    return await session_response(
+        session=session, user=user, company=company, membership=membership
+    )
 
 
 @router.post("/refresh", response_model=AuthTokenResponse)

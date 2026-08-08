@@ -8,6 +8,8 @@ import { BranchForm } from "./branch-form";
 import { CompanySettingsForm, type CompanySettings } from "./company-settings-form";
 import { EmployeeForm, type EditableEmployee } from "./employee-form";
 import { InvitationForm } from "./invitation-form";
+import { MemberAccessForm, type MemberAccess } from "./member-access-form";
+import { reviewGeofenceExitAction } from "./operations-actions";
 import { OperationsDashboard } from "./operations-dashboard";
 import { ShiftForm } from "./shift-form";
 
@@ -45,6 +47,22 @@ type Shift = {
   version: number;
 };
 
+type NamedOption = { id: string; name: string };
+type PermissionItem = { code: string; description: string };
+type GeofenceExit = {
+  id: string;
+  membership_id: string;
+  branch_id: string;
+  status: string;
+  detected_at: string;
+  distance_m: number | null;
+  accuracy_m: number | null;
+  location_permission: string;
+  consecutive_outside_samples: number;
+  review_comment: string | null;
+  version: number;
+};
+
 export default async function CompanyPortal({
   params,
 }: {
@@ -63,12 +81,31 @@ export default async function CompanyPortal({
   );
   const canEditEmployees = canManage;
   const canManageSettings = session.roles.includes("OWNER");
-  const [invitationResponse, employeeResponse, settingsResponse, branchResponse, shiftResponse] = await Promise.all([
+  const canReviewGeofence = session.permissions.includes("geofence_exits:manage");
+  const [
+    invitationResponse,
+    employeeResponse,
+    settingsResponse,
+    branchResponse,
+    shiftResponse,
+    departmentResponse,
+    groupResponse,
+    permissionResponse,
+    accessResponse,
+    geofenceResponse,
+  ] = await Promise.all([
     canManage ? authorizedApiFetch("/invitations") : Promise.resolve(null),
     authorizedApiFetch("/employees?page_size=100"),
     authorizedApiFetch("/companies/current"),
     authorizedApiFetch("/branches?page_size=100"),
     authorizedApiFetch("/shifts?page_size=100"),
+    canManageSettings ? authorizedApiFetch("/departments") : Promise.resolve(null),
+    canManageSettings ? authorizedApiFetch("/groups?page_size=100") : Promise.resolve(null),
+    canManageSettings ? authorizedApiFetch("/members/access-catalog") : Promise.resolve(null),
+    canManageSettings ? authorizedApiFetch("/members/access") : Promise.resolve(null),
+    canReviewGeofence
+      ? authorizedApiFetch("/geofence-exit-events")
+      : Promise.resolve(null),
   ]);
   const invitationPayload: { items: Invitation[] } = invitationResponse?.ok
     ? ((await invitationResponse.json()) as { items: Invitation[] })
@@ -85,6 +122,22 @@ export default async function CompanyPortal({
   const shiftPayload: { items: Shift[] } = shiftResponse.ok
     ? ((await shiftResponse.json()) as { items: Shift[] })
     : { items: [] };
+  const departmentPayload: { items: NamedOption[] } = departmentResponse?.ok
+    ? ((await departmentResponse.json()) as { items: NamedOption[] })
+    : { items: [] };
+  const groupPayload: { items: NamedOption[] } = groupResponse?.ok
+    ? ((await groupResponse.json()) as { items: NamedOption[] })
+    : { items: [] };
+  const permissions: PermissionItem[] = permissionResponse?.ok
+    ? ((await permissionResponse.json()) as PermissionItem[])
+    : [];
+  const accessItems: MemberAccess[] = accessResponse?.ok
+    ? ((await accessResponse.json()) as MemberAccess[])
+    : [];
+  const geofenceEvents: GeofenceExit[] = geofenceResponse?.ok
+    ? ((await geofenceResponse.json()) as GeofenceExit[])
+    : [];
+  const accessByMember = new Map(accessItems.map((item) => [item.membership_id, item]));
   const signOut = logoutAction.bind(null, lang);
 
   return (
@@ -108,7 +161,19 @@ export default async function CompanyPortal({
           ) : canEditEmployees ? (
             <div className="employee-list">
               {employeePayload.items.map((employee) => (
-                <EmployeeForm key={employee.membership_id} employee={employee} locale={lang} />
+                <div key={employee.membership_id}>
+                  <EmployeeForm employee={employee} locale={lang} />
+                  {canManageSettings && employee.role_code !== "OWNER" && accessByMember.has(employee.membership_id) && (
+                    <MemberAccessForm
+                      locale={lang}
+                      member={accessByMember.get(employee.membership_id)!}
+                      permissions={permissions}
+                      branches={branchPayload.items}
+                      departments={departmentPayload.items}
+                      groups={groupPayload.items}
+                    />
+                  )}
+                </div>
               ))}
             </div>
           ) : (
@@ -172,6 +237,62 @@ export default async function CompanyPortal({
           branches={branchPayload.items}
           shifts={shiftPayload.items}
         />
+        {canReviewGeofence && (
+          <section className="portal-section">
+            <h2>{ar ? "مراجعة مغادرة النطاق" : "Geofence exit review"}</h2>
+            <p>
+              {ar
+                ? "تُعرض محاولات المغادرة المكتشفة آلياً ضمن نطاق صلاحياتك."
+                : "Automatically detected exits within your assigned scope."}
+            </p>
+            {geofenceEvents.length === 0 ? (
+              <p>{ar ? "لا توجد أحداث للمراجعة." : "No exit events to review."}</p>
+            ) : (
+              <ul className="branch-list">
+                {geofenceEvents.map((event) => (
+                  <li key={event.id}>
+                    <div>
+                      <strong>{event.status}</strong>
+                      <span>
+                        {new Date(event.detected_at).toLocaleString(lang)} · {event.distance_m ?? "—"}m · {event.consecutive_outside_samples} samples
+                      </span>
+                      <span>
+                        {ar ? "الموظف" : "Employee"}: {event.membership_id}
+                      </span>
+                    </div>
+                    {event.review_comment ? (
+                      <span>{event.review_comment}</span>
+                    ) : (
+                      <div className="action-grid">
+                        {(["confirmed_unauthorized", "dismissed", "approved_exception"] as const).map((decision) => {
+                          const review = reviewGeofenceExitAction.bind(
+                            null,
+                            lang,
+                            event.id,
+                            event.version,
+                            decision,
+                          );
+                          return (
+                            <form action={review} key={decision}>
+                              <input
+                                name="comment"
+                                required
+                                minLength={3}
+                                maxLength={2000}
+                                placeholder={ar ? "سبب القرار" : "Decision reason"}
+                              />
+                              <button type="submit">{decision.replaceAll("_", " ")}</button>
+                            </form>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
         {canManage ? (
           <section className="portal-section">
             <h2>{ar ? "دعوات الموظفين" : "Employee invitations"}</h2>

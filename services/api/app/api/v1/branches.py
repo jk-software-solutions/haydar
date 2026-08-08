@@ -9,13 +9,22 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import CurrentAuthSession
-from app.core.authorization import Permission, require_permission, tenant_context
+from app.core.authorization import (
+    Permission,
+    membership_scopes,
+    require_branch_scope,
+    require_department_scope,
+    require_membership_scope,
+    require_permission,
+    require_unrestricted_scope,
+    tenant_context,
+)
 from app.core.errors import ProblemError
 from app.core.subscription_catalog import active_subscription, plan_limit
 from app.db.session import get_session
 from app.models.devices import AuditLog
 from app.models.identity import CompanyMembership
-from app.models.organization import Branch, Department, EmployeeBranchAssignment
+from app.models.organization import Branch, Department, EmployeeBranchAssignment, EmployeeProfile
 
 branches_router = APIRouter()
 departments_router = APIRouter()
@@ -346,6 +355,7 @@ async def create_branch(
 ) -> BranchResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.BRANCHES_MANAGE)
+    await require_unrestricted_scope(session, context)
     subscription = await active_subscription(session, context.company_id)
     branch_limit = plan_limit(subscription[1], "branches") if subscription else 0
     branch_count = int(
@@ -405,6 +415,18 @@ async def list_branches(
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.BRANCHES_VIEW)
     criteria = [Branch.company_id == context.company_id]
+    scopes = await membership_scopes(session, context)
+    if not scopes.unrestricted:
+        own_branch_ids = set(
+            await session.scalars(
+                select(EmployeeBranchAssignment.branch_id).where(
+                    EmployeeBranchAssignment.company_id == context.company_id,
+                    EmployeeBranchAssignment.membership_id == context.membership.id,
+                    EmployeeBranchAssignment.effective_to.is_(None),
+                )
+            )
+        )
+        criteria.append(Branch.id.in_(scopes.branch_ids | own_branch_ids))
     if active_only:
         criteria.append(Branch.is_active.is_(True))
     total = await session.scalar(select(func.count()).select_from(Branch).where(*criteria))
@@ -458,6 +480,7 @@ async def employee_branch_assignments(
 ) -> list[BranchAssignmentResponse]:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.ASSIGNMENTS_VIEW)
+    await require_membership_scope(session, context, membership_id)
     if not await tenant_membership_exists(session, context.company_id, membership_id):
         raise ProblemError(
             status=status.HTTP_404_NOT_FOUND,
@@ -495,6 +518,8 @@ async def assign_employee_to_branch(
 ) -> BranchAssignmentResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.ASSIGNMENTS_MANAGE)
+    await require_membership_scope(session, context, payload.membership_id)
+    await require_branch_scope(session, context, payload.branch_id)
     if not await tenant_membership_exists(session, context.company_id, payload.membership_id):
         raise ProblemError(
             status=status.HTTP_404_NOT_FOUND,
@@ -579,6 +604,7 @@ async def get_branch(
 ) -> BranchResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.BRANCHES_VIEW)
+    await require_branch_scope(session, context, branch_id)
     branch = await session.scalar(
         select(Branch).where(Branch.company_id == context.company_id, Branch.id == branch_id)
     )
@@ -601,6 +627,7 @@ async def update_branch(
 ) -> BranchResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.BRANCHES_MANAGE)
+    await require_branch_scope(session, context, branch_id)
     branch = await session.scalar(
         select(Branch)
         .where(Branch.company_id == context.company_id, Branch.id == branch_id)
@@ -659,6 +686,7 @@ async def archive_branch(
 ) -> None:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.BRANCHES_MANAGE)
+    await require_branch_scope(session, context, branch_id)
     branch = await session.scalar(
         select(Branch)
         .where(Branch.company_id == context.company_id, Branch.id == branch_id)
@@ -701,6 +729,7 @@ async def create_department(
 ) -> DepartmentResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.DEPARTMENTS_MANAGE)
+    await require_unrestricted_scope(session, context)
     await ensure_unique_department_code(session, context.company_id, payload.code)
     if payload.parent_department_id is not None:
         parent = await session.scalar(
@@ -744,6 +773,18 @@ async def list_departments(
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.DEPARTMENTS_VIEW)
     criteria = [Department.company_id == context.company_id]
+    scopes = await membership_scopes(session, context)
+    if not scopes.unrestricted:
+        own_department_ids = set(
+            await session.scalars(
+                select(EmployeeProfile.department_id).where(
+                    EmployeeProfile.company_id == context.company_id,
+                    EmployeeProfile.membership_id == context.membership.id,
+                    EmployeeProfile.department_id.is_not(None),
+                )
+            )
+        )
+        criteria.append(Department.id.in_(scopes.department_ids | own_department_ids))
     if active_only:
         criteria.append(Department.is_active.is_(True))
     departments = list(
@@ -763,6 +804,7 @@ async def get_department(
 ) -> DepartmentResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.DEPARTMENTS_VIEW)
+    await require_department_scope(session, context, department_id)
     department = await session.scalar(
         select(Department).where(
             Department.company_id == context.company_id,
@@ -788,6 +830,7 @@ async def update_department(
 ) -> DepartmentResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.DEPARTMENTS_MANAGE)
+    await require_department_scope(session, context, department_id)
     department = await session.scalar(
         select(Department)
         .where(
@@ -824,6 +867,7 @@ async def update_department(
             detail="A department cannot be its own parent.",
         )
     if parent_id is not None and "parent_department_id" in changes:
+        await require_department_scope(session, context, parent_id)
         parent = await session.scalar(
             select(Department.id).where(
                 Department.company_id == context.company_id,
@@ -865,6 +909,7 @@ async def archive_department(
 ) -> None:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.DEPARTMENTS_MANAGE)
+    await require_department_scope(session, context, department_id)
     department = await session.scalar(
         select(Department)
         .where(

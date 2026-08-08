@@ -135,6 +135,7 @@ class BranchQrToken(Base):
             name="fk_branch_qr_tokens_company_actor",
         ),
         Index("ix_branch_qr_tokens_company_expiry", "company_id", "expires_at"),
+        UniqueConstraint("company_id", "id", name="uq_branch_qr_tokens_company_id"),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -145,6 +146,33 @@ class BranchQrToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class BranchQrTokenUse(Base):
+    __tablename__ = "branch_qr_token_uses"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "token_id"],
+            ["branch_qr_tokens.company_id", "branch_qr_tokens.id"],
+            name="fk_branch_qr_token_uses_company_token",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_branch_qr_token_uses_company_member",
+        ),
+        UniqueConstraint(
+            "token_id", "membership_id", "action", name="uq_branch_qr_token_uses_replay"
+        ),
+        Index("ix_branch_qr_token_uses_company_used", "company_id", "used_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    token_id: Mapped[UUID] = mapped_column(nullable=False)
+    membership_id: Mapped[UUID] = mapped_column(nullable=False)
+    action: Mapped[str] = mapped_column(String(24), nullable=False)
+    used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class PermissionRequest(Base):
@@ -161,6 +189,7 @@ class PermissionRequest(Base):
             name="fk_permission_requests_company_reviewer",
         ),
         Index("ix_permission_requests_company_status", "company_id", "status"),
+        UniqueConstraint("company_id", "id", name="uq_permission_requests_company_id"),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -194,6 +223,11 @@ class PresenceRequest(Base):
             ["branches.company_id", "branches.id"],
             name="fk_presence_requests_company_branch",
         ),
+        ForeignKeyConstraint(
+            ["company_id", "group_id"],
+            ["organization_groups.company_id", "organization_groups.id"],
+            name="fk_presence_requests_company_group",
+        ),
         UniqueConstraint("company_id", "id", name="uq_presence_requests_company_id"),
         Index("ix_presence_requests_company_deadline", "company_id", "deadline_at"),
     )
@@ -202,6 +236,7 @@ class PresenceRequest(Base):
     company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
     created_by_membership_id: Mapped[UUID] = mapped_column(nullable=False)
     branch_id: Mapped[UUID | None]
+    group_id: Mapped[UUID | None]
     message: Mapped[str] = mapped_column(String(500), nullable=False)
     deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="active", nullable=False)
@@ -244,3 +279,81 @@ class PresenceRecipient(Base):
     distance_m: Mapped[int | None] = mapped_column(Integer)
     note: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class GeofenceExitEvent(Base):
+    __tablename__ = "geofence_exit_events"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "record_id"],
+            ["attendance_records.company_id", "attendance_records.id"],
+            name="fk_geofence_exit_events_company_record",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_geofence_exit_events_company_member",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "branch_id"],
+            ["branches.company_id", "branches.id"],
+            name="fk_geofence_exit_events_company_branch",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "shift_id"],
+            ["shifts.company_id", "shifts.id"],
+            name="fk_geofence_exit_events_company_shift",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "device_id"],
+            ["devices.company_id", "devices.id"],
+            name="fk_geofence_exit_events_company_device",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "permission_request_id"],
+            ["permission_requests.company_id", "permission_requests.id"],
+            name="fk_geofence_exit_events_company_permission",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "reviewed_by_membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_geofence_exit_events_company_reviewer",
+        ),
+        Index("ix_geofence_exit_events_company_detected", "company_id", "detected_at"),
+        Index(
+            "uq_geofence_exit_events_open_record",
+            "company_id",
+            "record_id",
+            unique=True,
+            postgresql_where=text("status IN ('observing', 'unauthorized')"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    record_id: Mapped[UUID] = mapped_column(nullable=False)
+    membership_id: Mapped[UUID] = mapped_column(nullable=False)
+    branch_id: Mapped[UUID] = mapped_column(nullable=False)
+    shift_id: Mapped[UUID] = mapped_column(nullable=False)
+    device_id: Mapped[UUID] = mapped_column(nullable=False)
+    permission_request_id: Mapped[UUID | None]
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    location_permission: Mapped[str] = mapped_column(String(32), nullable=False)
+    first_detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    accuracy_m: Mapped[int | None] = mapped_column(Integer)
+    distance_m: Mapped[int | None] = mapped_column(Integer)
+    consecutive_outside_samples: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    grace_seconds: Mapped[int] = mapped_column(Integer, default=120, nullable=False)
+    reconfirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by_membership_id: Mapped[UUID | None]
+    review_comment: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )

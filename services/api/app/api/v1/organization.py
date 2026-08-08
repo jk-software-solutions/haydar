@@ -8,7 +8,14 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import CurrentAuthSession
-from app.core.authorization import Permission, require_permission, tenant_context
+from app.core.authorization import (
+    Permission,
+    require_department_scope,
+    require_membership_scope,
+    require_permission,
+    tenant_context,
+    visible_membership_ids,
+)
 from app.core.errors import ProblemError
 from app.db.session import get_session
 from app.models.devices import AuditLog
@@ -268,6 +275,10 @@ async def list_employees(
         .select_from(EmployeeProfile)
         .where(EmployeeProfile.company_id == context.company_id)
     )
+    visible = await visible_membership_ids(session, context)
+    if visible is not None:
+        statement = statement.where(EmployeeProfile.membership_id.in_(visible))
+        count_statement = count_statement.where(EmployeeProfile.membership_id.in_(visible))
     if search is not None:
         pattern = f"%{search.strip()}%"
         criterion = or_(
@@ -311,6 +322,7 @@ async def get_employee(
 ) -> EmployeeResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.MEMBERS_VIEW)
+    await require_membership_scope(session, context, membership_id)
     row = (
         await session.execute(
             employee_statement(context.company_id).where(
@@ -337,6 +349,7 @@ async def update_employee(
 ) -> EmployeeResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.MEMBERS_MANAGE)
+    await require_membership_scope(session, context, membership_id)
     profile = await session.scalar(
         select(EmployeeProfile)
         .where(
@@ -362,6 +375,7 @@ async def update_employee(
     changes = payload.model_dump(exclude_unset=True, exclude={"version"})
     department_id = changes.get("department_id")
     if department_id is not None and "department_id" in changes:
+        await require_department_scope(session, context, department_id)
         department = await session.scalar(
             select(Department.id).where(
                 Department.company_id == context.company_id,

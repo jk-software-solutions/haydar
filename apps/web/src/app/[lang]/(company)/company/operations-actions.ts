@@ -180,3 +180,17 @@ export async function createReportExportAction(locale: string, formData: FormDat
     locale,
   });
 }
+
+export async function reviewGeofenceExitAction(
+  locale: string,
+  eventId: string,
+  version: number,
+  decision: "confirmed_unauthorized" | "dismissed" | "approved_exception",
+  formData: FormData,
+): Promise<void> {
+  await mutate(locale, `/geofence-exit-events/${eventId}/review`, "POST", {
+    decision,
+    version,
+    comment: text(formData, "comment"),
+  });
+}

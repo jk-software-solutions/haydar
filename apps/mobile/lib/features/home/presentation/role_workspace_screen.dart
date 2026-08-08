@@ -55,9 +55,7 @@ class _RoleWorkspaceScreenState extends ConsumerState<RoleWorkspaceScreen> {
       );
     }
 
-    final primaryRole = session.roles.isEmpty
-        ? 'EMPLOYEE'
-        : session.roles.first;
+    final primaryRole = _primaryRole(session.roles);
     final employeeExperience = primaryRole == 'EMPLOYEE';
     final destinations = employeeExperience
         ? _employeeDestinations(l10n)
@@ -181,20 +179,29 @@ class _RoleWorkspaceScreenState extends ConsumerState<RoleWorkspaceScreen> {
       return RequestsScreen(session: session);
     }
     if (!employeeExperience && selectedIndex == 2) {
-      return AttendanceScreen(session: session, managerMode: true);
+      return session.can('attendance:view')
+          ? AttendanceScreen(session: session, managerMode: true)
+          : Center(child: Text(l10n.permissionDenied));
     }
     if (!employeeExperience && selectedIndex == 1) {
-      return TeamScreen(session: session);
+      return session.can('members:view')
+          ? TeamScreen(session: session)
+          : Center(child: Text(l10n.permissionDenied));
     }
     if (!employeeExperience && selectedIndex == 3) {
-      return TasksScreen(session: session, managerMode: true);
+      return session.can('tasks:view')
+          ? TasksScreen(session: session, managerMode: true)
+          : Center(child: Text(l10n.permissionDenied));
     }
     if (employeeExperience && selectedIndex == 4) {
       return _ProfileView(session: session, roleLabel: _roleLabel(l10n, role));
     }
     if (!employeeExperience && selectedIndex == 4) {
       return _ManagementMoreView(
-        canManage: _canManageInvitations(role),
+        canManageInvitations: session.can('members:create'),
+        canManageDevices: session.can('devices:manage'),
+        canManageApprovals:
+            session.can('permissions:manage') || session.can('leave:manage'),
         onInvitations: () => context.push('/app/invitations'),
         onDevices: () => context.push('/app/device-requests'),
         onApprovals: () => Navigator.of(context).push(
@@ -247,12 +254,17 @@ class _RoleWorkspaceScreenState extends ConsumerState<RoleWorkspaceScreen> {
     };
   }
 
-  bool _canManageInvitations(String role) {
-    return role == 'OWNER' ||
-        role == 'MANAGER' ||
-        role == 'COMPANY_MANAGER' ||
-        role == 'HR' ||
-        role == 'HR_OFFICER';
+  String _primaryRole(List<String> roles) {
+    for (final role in const <String>[
+      'OWNER',
+      'MANAGER',
+      'HR_OFFICER',
+      'SUPERVISOR',
+      'EMPLOYEE',
+    ]) {
+      if (roles.contains(role)) return role;
+    }
+    return 'EMPLOYEE';
   }
 
   String _roleLabel(AppLocalizations l10n, String role) {
@@ -326,13 +338,17 @@ class _ProfileView extends StatelessWidget {
 
 class _ManagementMoreView extends StatelessWidget {
   const _ManagementMoreView({
-    required this.canManage,
+    required this.canManageInvitations,
+    required this.canManageDevices,
+    required this.canManageApprovals,
     required this.onInvitations,
     required this.onDevices,
     required this.onApprovals,
   });
 
-  final bool canManage;
+  final bool canManageInvitations;
+  final bool canManageDevices;
+  final bool canManageApprovals;
   final VoidCallback onInvitations;
   final VoidCallback onDevices;
   final VoidCallback onApprovals;
@@ -340,7 +356,7 @@ class _ManagementMoreView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    if (!canManage) {
+    if (!canManageInvitations && !canManageDevices && !canManageApprovals) {
       return Center(child: Text(l10n.permissionDenied));
     }
     return ListView(
@@ -348,41 +364,44 @@ class _ManagementMoreView extends StatelessWidget {
       children: <Widget>[
         Text(l10n.navMore, style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 16),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.approval_outlined),
-            title: Text(
-              Localizations.localeOf(context).languageCode == 'ar'
-                  ? 'الموافقات'
-                  : 'Approvals',
+        if (canManageApprovals)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.approval_outlined),
+              title: Text(
+                Localizations.localeOf(context).languageCode == 'ar'
+                    ? 'الموافقات'
+                    : 'Approvals',
+              ),
+              subtitle: Text(
+                Localizations.localeOf(context).languageCode == 'ar'
+                    ? 'مراجعة الاستئذانات والإجازات.'
+                    : 'Review permission and leave requests.',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: onApprovals,
             ),
-            subtitle: Text(
-              Localizations.localeOf(context).languageCode == 'ar'
-                  ? 'مراجعة الاستئذانات والإجازات.'
-                  : 'Review permission and leave requests.',
+          ),
+        if (canManageInvitations)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.mark_email_unread_outlined),
+              title: Text(l10n.manageInvitationsTitle),
+              subtitle: Text(l10n.manageInvitationsDescription),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: onInvitations,
             ),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: onApprovals,
           ),
-        ),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.mark_email_unread_outlined),
-            title: Text(l10n.manageInvitationsTitle),
-            subtitle: Text(l10n.manageInvitationsDescription),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: onInvitations,
+        if (canManageDevices)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.phonelink_lock_outlined),
+              title: Text(l10n.deviceRequestsTitle),
+              subtitle: Text(l10n.deviceRequestsDescription),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: onDevices,
+            ),
           ),
-        ),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.phonelink_lock_outlined),
-            title: Text(l10n.deviceRequestsTitle),
-            subtitle: Text(l10n.deviceRequestsDescription),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: onDevices,
-          ),
-        ),
       ],
     );
   }

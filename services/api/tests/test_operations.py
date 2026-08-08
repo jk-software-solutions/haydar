@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -115,8 +115,19 @@ async def test_attendance_requires_approved_device_and_tracks_session(
 ) -> None:
     owner = await register_company(db_client, "Attendance Ops", "attendance-ops@example.com")
     employee = await invite_employee(db_client, owner, "attendance-worker@example.com")
-    await configure_attendance(db_client, owner, employee)
-    action = {"method": "gps", "latitude": "24.713600", "longitude": "46.675300"}
+    branch, _shift = await configure_attendance(db_client, owner, employee)
+    qr_response = await db_client.post(
+        "/api/v1/attendance/qr-tokens",
+        headers=auth_headers(owner),
+        json={"branch_id": branch["id"], "valid_for_seconds": 900},
+    )
+    assert qr_response.status_code == 201
+    action = {
+        "method": "qr",
+        "latitude": "24.713600",
+        "longitude": "46.675300",
+        "qr_token": qr_response.json()["token"],
+    }
 
     missing_device = await db_client.post(
         "/api/v1/attendance/check-in", headers=auth_headers(employee), json=action
@@ -150,6 +161,7 @@ async def test_attendance_requires_approved_device_and_tracks_session(
         json=action,
     )
     assert duplicate.status_code == 409
+    assert duplicate.json()["code"] == "qr_token_replayed"
 
     check_out = await db_client.post(
         "/api/v1/attendance/check-out",
@@ -161,6 +173,152 @@ async def test_attendance_requires_approved_device_and_tracks_session(
     history = await db_client.get("/api/v1/attendance/me", headers=auth_headers(employee))
     assert history.status_code == 200
     assert len(history.json()) == 1
+
+
+async def test_geofence_exit_detection_permission_reconfirmation_and_review(
+    db_client: httpx.AsyncClient, monkeypatch: Any
+) -> None:
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "geofence_exit_grace_seconds", 0)
+    monkeypatch.setattr(settings, "geofence_exit_min_samples", 2)
+
+    owner = await register_company(db_client, "Exit Ops", "exit-ops@example.com")
+    other_owner = await register_company(db_client, "Other Exit Ops", "other-exit@example.com")
+    employee = await invite_employee(db_client, owner, "exit-worker@example.com")
+    branch, _shift = await configure_attendance(db_client, owner, employee)
+    installation_id = str(uuid4())
+    registration = await db_client.post(
+        "/api/v1/devices/register",
+        headers=auth_headers(employee),
+        json={
+            "installation_id": installation_id,
+            "platform": "android",
+            "device_name": "Geofence phone",
+        },
+    )
+    assert registration.status_code == 201
+    check_in = await db_client.post(
+        "/api/v1/attendance/check-in",
+        headers=auth_headers(employee, installation_id),
+        json={
+            "method": "gps",
+            "latitude": "24.713600",
+            "longitude": "46.675300",
+        },
+    )
+    assert check_in.status_code == 201
+    record_id = check_in.json()["id"]
+
+    first_time = datetime.now(UTC)
+    outside_sample = {
+        "record_id": record_id,
+        "observed_at": first_time.isoformat(),
+        "latitude": "24.730000",
+        "longitude": "46.690000",
+        "accuracy_m": 12,
+        "source": "foreground_monitor",
+        "location_permission": "while_in_use",
+    }
+    first = await db_client.post(
+        "/api/v1/geofence-exit-events/report",
+        headers=auth_headers(employee, installation_id),
+        json=outside_sample,
+    )
+    assert first.status_code == 201
+    assert first.json()["status"] == "observing"
+    assert first.json()["consecutive_outside_samples"] == 1
+
+    outside_sample["observed_at"] = (first_time + timedelta(seconds=1)).isoformat()
+    second = await db_client.post(
+        "/api/v1/geofence-exit-events/report",
+        headers=auth_headers(employee, installation_id),
+        json=outside_sample,
+    )
+    assert second.status_code == 201
+    assert second.json()["status"] == "unauthorized"
+    assert second.json()["consecutive_outside_samples"] == 2
+    event_id = second.json()["id"]
+
+    owner_notifications = await db_client.get(
+        "/api/v1/notifications?unread_only=true", headers=auth_headers(owner)
+    )
+    assert owner_notifications.status_code == 200
+    assert any(
+        item["kind"] == "geofence_exit_unauthorized" and item["target_id"] == event_id
+        for item in owner_notifications.json()
+    )
+    events = await db_client.get("/api/v1/geofence-exit-events", headers=auth_headers(owner))
+    assert events.status_code == 200
+    assert [event["id"] for event in events.json()] == [event_id]
+    other_events = await db_client.get(
+        "/api/v1/geofence-exit-events", headers=auth_headers(other_owner)
+    )
+    assert other_events.status_code == 200
+    assert other_events.json() == []
+
+    inside = await db_client.post(
+        "/api/v1/geofence-exit-events/report",
+        headers=auth_headers(employee, installation_id),
+        json={
+            **outside_sample,
+            "observed_at": (first_time + timedelta(seconds=2)).isoformat(),
+            "latitude": "24.713600",
+            "longitude": "46.675300",
+        },
+    )
+    assert inside.status_code == 201
+    assert inside.json()["reconfirmed_at"] is not None
+
+    review = await db_client.post(
+        f"/api/v1/geofence-exit-events/{event_id}/review",
+        headers=auth_headers(owner),
+        json={
+            "decision": "confirmed_unauthorized",
+            "comment": "Confirmed after manager review",
+            "version": inside.json()["version"],
+        },
+    )
+    assert review.status_code == 200
+    assert review.json()["status"] == "confirmed_unauthorized"
+    cross_company_review = await db_client.post(
+        f"/api/v1/geofence-exit-events/{event_id}/review",
+        headers=auth_headers(other_owner),
+        json={
+            "decision": "dismissed",
+            "comment": "Must not cross tenant boundary",
+            "version": review.json()["version"],
+        },
+    )
+    assert cross_company_review.status_code == 404
+
+    permission_start = datetime.now(UTC) - timedelta(minutes=1)
+    permission = await db_client.post(
+        "/api/v1/permission-requests",
+        headers=auth_headers(employee),
+        json={
+            "request_type": "one_hour",
+            "starts_at": permission_start.isoformat(),
+            "ends_at": (permission_start + timedelta(hours=1)).isoformat(),
+            "reason": "Approved off-site work",
+        },
+    )
+    assert permission.status_code == 201
+    approval = await db_client.post(
+        f"/api/v1/permission-requests/{permission.json()['id']}/review",
+        headers=auth_headers(owner),
+        json={"decision": "approved", "comment": "Approved"},
+    )
+    assert approval.status_code == 200
+    approved_exit = await db_client.post(
+        "/api/v1/geofence-exit-events/report",
+        headers=auth_headers(employee, installation_id),
+        json={**outside_sample, "observed_at": datetime.now(UTC).isoformat()},
+    )
+    assert approved_exit.status_code == 201
+    assert approved_exit.json()["status"] == "approved_exit"
+    assert approved_exit.json()["permission_request_id"] == permission.json()["id"]
 
 
 async def test_tasks_leave_files_exports_and_tenant_isolation(

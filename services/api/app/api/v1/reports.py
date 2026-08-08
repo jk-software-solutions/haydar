@@ -12,14 +12,22 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import CurrentAuthSession
-from app.core.authorization import Permission, require_permission, tenant_context
+from app.core.authorization import (
+    Permission,
+    membership_scopes,
+    require_branch_scope,
+    require_membership_scope,
+    require_permission,
+    tenant_context,
+    visible_membership_ids,
+)
 from app.core.errors import ProblemError
 from app.core.subscription_catalog import active_subscription
 from app.db.session import get_session
 from app.models.attendance import AttendanceRecord, PermissionRequest
 from app.models.organization import Branch, EmployeeBranchAssignment, EmployeeProfile, Shift
 from app.models.platform import AttendanceLeaderboardSetting, ExportJob
-from app.models.workforce import EmployeeDocument, LeaveRequest, WorkTask
+from app.models.workforce import EmployeeDocument, LeaveRequest, TaskAssignee, WorkTask
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_session)]
@@ -140,6 +148,9 @@ async def attendance_leaderboard(
         AttendanceRecord.status.in_(("on_time", "late", "on_permission")),
         AttendanceRecord.work_date >= date.today() - timedelta(days=30),
     ]
+    visible = await visible_membership_ids(session, context)
+    if visible is not None:
+        criteria.append(AttendanceRecord.membership_id.in_(visible))
     if setting.visibility == "branch" and not manager:
         branch_id = await session.scalar(
             select(EmployeeBranchAssignment.branch_id).where(
@@ -221,9 +232,16 @@ async def attendance_report(
 ) -> AttendanceReportResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.REPORTS_VIEW)
+    if membership_id is not None:
+        await require_membership_scope(session, context, membership_id)
+    if branch_id is not None:
+        await require_branch_scope(session, context, branch_id)
     criteria = attendance_criteria(
         context.company_id, date_from, date_to, membership_id, branch_id, record_status
     )
+    visible = await visible_membership_ids(session, context)
+    if visible is not None:
+        criteria.append(AttendanceRecord.membership_id.in_(visible))
     records = list(
         await session.scalars(
             select(AttendanceRecord)
@@ -252,12 +270,29 @@ async def overview_report(
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.REPORTS_VIEW)
     today = date.today()
+    visible = await visible_membership_ids(session, context)
+    scopes = await membership_scopes(session, context)
+    employee_scope = [] if visible is None else [EmployeeProfile.membership_id.in_(visible)]
+    attendance_scope = [] if visible is None else [AttendanceRecord.membership_id.in_(visible)]
+    request_scope = [] if visible is None else [LeaveRequest.membership_id.in_(visible)]
+    permission_scope = [] if visible is None else [PermissionRequest.membership_id.in_(visible)]
+    document_scope = [] if visible is None else [EmployeeDocument.membership_id.in_(visible)]
+    branch_scope = [] if scopes.unrestricted else [Branch.id.in_(scopes.branch_ids)]
+    task_scope = (
+        []
+        if visible is None
+        else [
+            WorkTask.id.in_(
+                select(TaskAssignee.task_id).where(TaskAssignee.membership_id.in_(visible))
+            )
+        ]
+    )
     return OverviewReportResponse(
         employees=int(
             await session.scalar(
                 select(func.count())
                 .select_from(EmployeeProfile)
-                .where(EmployeeProfile.company_id == context.company_id)
+                .where(EmployeeProfile.company_id == context.company_id, *employee_scope)
             )
             or 0
         ),
@@ -265,7 +300,11 @@ async def overview_report(
             await session.scalar(
                 select(func.count())
                 .select_from(Branch)
-                .where(Branch.company_id == context.company_id, Branch.is_active.is_(True))
+                .where(
+                    Branch.company_id == context.company_id,
+                    Branch.is_active.is_(True),
+                    *branch_scope,
+                )
             )
             or 0
         ),
@@ -281,7 +320,7 @@ async def overview_report(
             await session.scalar(
                 select(func.count())
                 .select_from(AttendanceRecord)
-                .where(AttendanceRecord.company_id == context.company_id)
+                .where(AttendanceRecord.company_id == context.company_id, *attendance_scope)
             )
             or 0
         ),
@@ -292,6 +331,7 @@ async def overview_report(
                 .where(
                     LeaveRequest.company_id == context.company_id,
                     LeaveRequest.status == "pending",
+                    *request_scope,
                 )
             )
             or 0
@@ -303,6 +343,7 @@ async def overview_report(
                 .where(
                     PermissionRequest.company_id == context.company_id,
                     PermissionRequest.status == "pending",
+                    *permission_scope,
                 )
             )
             or 0
@@ -314,6 +355,7 @@ async def overview_report(
                 .where(
                     WorkTask.company_id == context.company_id,
                     WorkTask.status.not_in(("completed", "postponed")),
+                    *task_scope,
                 )
             )
             or 0
@@ -325,6 +367,7 @@ async def overview_report(
                 .where(
                     EmployeeDocument.company_id == context.company_id,
                     EmployeeDocument.expires_on < today,
+                    *document_scope,
                 )
             )
             or 0
@@ -337,6 +380,7 @@ async def overview_report(
                     EmployeeDocument.company_id == context.company_id,
                     EmployeeDocument.expires_on >= today,
                     EmployeeDocument.expires_on <= today + timedelta(days=30),
+                    *document_scope,
                 )
             )
             or 0
@@ -345,21 +389,26 @@ async def overview_report(
 
 
 async def export_rows(
-    session: AsyncSession, company_id: UUID, payload: ExportCreateRequest
+    session: AsyncSession,
+    company_id: UUID,
+    payload: ExportCreateRequest,
+    visible_members: frozenset[UUID] | None,
+    visible_branches: frozenset[UUID] | None,
 ) -> tuple[list[str], list[list[object]]]:
     if payload.report_type == "attendance":
+        criteria = attendance_criteria(
+            company_id,
+            payload.date_from,
+            payload.date_to,
+            payload.membership_id,
+            payload.branch_id,
+            payload.status,
+        )
+        if visible_members is not None:
+            criteria.append(AttendanceRecord.membership_id.in_(visible_members))
         records = await session.scalars(
             select(AttendanceRecord)
-            .where(
-                *attendance_criteria(
-                    company_id,
-                    payload.date_from,
-                    payload.date_to,
-                    payload.membership_id,
-                    payload.branch_id,
-                    payload.status,
-                )
-            )
+            .where(*criteria)
             .order_by(AttendanceRecord.work_date.desc())
             .limit(10000)
         )
@@ -392,7 +441,14 @@ async def export_rows(
     if payload.report_type == "leave":
         leave_items = await session.scalars(
             select(LeaveRequest)
-            .where(LeaveRequest.company_id == company_id)
+            .where(
+                LeaveRequest.company_id == company_id,
+                *(
+                    []
+                    if visible_members is None
+                    else [LeaveRequest.membership_id.in_(visible_members)]
+                ),
+            )
             .order_by(LeaveRequest.created_at.desc())
             .limit(10000)
         )
@@ -410,7 +466,14 @@ async def export_rows(
     if payload.report_type == "permissions":
         permission_items = await session.scalars(
             select(PermissionRequest)
-            .where(PermissionRequest.company_id == company_id)
+            .where(
+                PermissionRequest.company_id == company_id,
+                *(
+                    []
+                    if visible_members is None
+                    else [PermissionRequest.membership_id.in_(visible_members)]
+                ),
+            )
             .order_by(PermissionRequest.created_at.desc())
             .limit(10000)
         )
@@ -428,7 +491,20 @@ async def export_rows(
     if payload.report_type == "tasks":
         task_items = await session.scalars(
             select(WorkTask)
-            .where(WorkTask.company_id == company_id)
+            .where(
+                WorkTask.company_id == company_id,
+                *(
+                    []
+                    if visible_members is None
+                    else [
+                        WorkTask.id.in_(
+                            select(TaskAssignee.task_id).where(
+                                TaskAssignee.membership_id.in_(visible_members)
+                            )
+                        )
+                    ]
+                ),
+            )
             .order_by(WorkTask.created_at.desc())
             .limit(10000)
         )
@@ -445,7 +521,14 @@ async def export_rows(
     if payload.report_type == "documents":
         document_items = await session.scalars(
             select(EmployeeDocument)
-            .where(EmployeeDocument.company_id == company_id)
+            .where(
+                EmployeeDocument.company_id == company_id,
+                *(
+                    []
+                    if visible_members is None
+                    else [EmployeeDocument.membership_id.in_(visible_members)]
+                ),
+            )
             .order_by(EmployeeDocument.expires_on.asc().nullslast())
             .limit(10000)
         )
@@ -462,7 +545,12 @@ async def export_rows(
         ]
     if payload.report_type == "branches":
         branch_items = await session.scalars(
-            select(Branch).where(Branch.company_id == company_id).order_by(Branch.name.asc())
+            select(Branch)
+            .where(
+                Branch.company_id == company_id,
+                *([] if visible_branches is None else [Branch.id.in_(visible_branches)]),
+            )
+            .order_by(Branch.name.asc())
         )
         return ["Code", "Name", "Address", "Timezone", "Radius m", "Active"], [
             [
@@ -535,6 +623,10 @@ async def create_export(
 ) -> ExportJobResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.REPORTS_EXPORT)
+    if payload.membership_id is not None:
+        await require_membership_scope(session, context, payload.membership_id)
+    if payload.branch_id is not None:
+        await require_branch_scope(session, context, payload.branch_id)
     subscription = await active_subscription(session, context.company_id)
     if subscription is None or subscription[1].features.get("reports") not in {
         "basic",
@@ -559,7 +651,15 @@ async def create_export(
     session.add(job)
     await session.flush()
     try:
-        headers, rows = await export_rows(session, context.company_id, payload)
+        visible = await visible_membership_ids(session, context)
+        scopes = await membership_scopes(session, context)
+        headers, rows = await export_rows(
+            session,
+            context.company_id,
+            payload,
+            visible,
+            None if scopes.unrestricted else scopes.branch_ids,
+        )
         job.progress_percent = 60
         if payload.export_format == "xlsx":
             job.file_content = create_xlsx(headers, rows)
@@ -589,11 +689,12 @@ async def list_exports(
 ) -> list[ExportJobResponse]:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.REPORTS_EXPORT)
+    scopes = await membership_scopes(session, context)
+    criteria = [ExportJob.company_id == context.company_id]
+    if not scopes.unrestricted:
+        criteria.append(ExportJob.requested_by_membership_id == context.membership.id)
     jobs = await session.scalars(
-        select(ExportJob)
-        .where(ExportJob.company_id == context.company_id)
-        .order_by(ExportJob.created_at.desc())
-        .limit(100)
+        select(ExportJob).where(*criteria).order_by(ExportJob.created_at.desc()).limit(100)
     )
     return [export_response(job) for job in jobs]
 
@@ -604,13 +705,15 @@ async def download_export(
 ) -> Response:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.REPORTS_EXPORT)
-    job = await session.scalar(
-        select(ExportJob).where(
-            ExportJob.company_id == context.company_id,
-            ExportJob.id == job_id,
-            ExportJob.status == "completed",
-        )
-    )
+    scopes = await membership_scopes(session, context)
+    criteria = [
+        ExportJob.company_id == context.company_id,
+        ExportJob.id == job_id,
+        ExportJob.status == "completed",
+    ]
+    if not scopes.unrestricted:
+        criteria.append(ExportJob.requested_by_membership_id == context.membership.id)
+    job = await session.scalar(select(ExportJob).where(*criteria))
     if job is None or job.file_content is None or job.content_type is None or job.filename is None:
         raise ProblemError(
             status=status.HTTP_404_NOT_FOUND,

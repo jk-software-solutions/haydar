@@ -100,6 +100,62 @@ class AttendanceApi {
     qrToken: qrToken,
   );
 
+  Future<void> reportGeofenceSample({
+    required AuthSession session,
+    required String recordId,
+    required DateTime observedAt,
+    required String source,
+    required String locationPermission,
+    double? latitude,
+    double? longitude,
+    int? accuracyM,
+  }) async {
+    final installationId = await installationIdentity.getOrCreate();
+    await dio.post<void>(
+      '/geofence-exit-events/report',
+      data: <String, dynamic>{
+        'record_id': recordId,
+        'observed_at': observedAt.toUtc().toIso8601String(),
+        'source': source,
+        'location_permission': locationPermission,
+        'latitude': ?latitude,
+        'longitude': ?longitude,
+        'accuracy_m': ?accuracyM,
+      },
+      options: _auth(session, installationId: installationId),
+    );
+  }
+
+  Future<List<GeofenceExitEvent>> listGeofenceExits(AuthSession session) async {
+    final response = await dio.get<List<dynamic>>(
+      '/geofence-exit-events',
+      options: _auth(session),
+    );
+    return (response.data ?? <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(GeofenceExitEvent.fromJson)
+        .toList(growable: false);
+  }
+
+  Future<GeofenceExitEvent> reviewGeofenceExit({
+    required AuthSession session,
+    required String eventId,
+    required int version,
+    required String decision,
+    required String comment,
+  }) async {
+    final response = await dio.post<Map<String, dynamic>>(
+      '/geofence-exit-events/$eventId/review',
+      data: <String, dynamic>{
+        'version': version,
+        'decision': decision,
+        'comment': comment,
+      },
+      options: _auth(session),
+    );
+    return GeofenceExitEvent.fromJson(response.data ?? <String, dynamic>{});
+  }
+
   Future<AttendanceRecord> _attendanceAction({
     required String path,
     required AuthSession session,
@@ -123,6 +179,44 @@ class AttendanceApi {
     );
     return AttendanceRecord.fromJson(response.data ?? <String, dynamic>{});
   }
+}
+
+class GeofenceExitEvent {
+  const GeofenceExitEvent({
+    required this.id,
+    required this.membershipId,
+    required this.status,
+    required this.detectedAt,
+    required this.distanceM,
+    required this.samples,
+    required this.reviewComment,
+    required this.version,
+  });
+
+  factory GeofenceExitEvent.fromJson(Map<String, dynamic> json) {
+    return GeofenceExitEvent(
+      id: json['id'] as String? ?? '',
+      membershipId: json['membership_id'] as String? ?? '',
+      status: json['status'] as String? ?? 'observing',
+      detectedAt: DateTime.tryParse(json['detected_at'] as String? ?? ''),
+      distanceM: json['distance_m'] as int?,
+      samples: json['consecutive_outside_samples'] as int? ?? 1,
+      reviewComment: json['review_comment'] as String?,
+      version: json['version'] as int? ?? 1,
+    );
+  }
+
+  final String id;
+  final String membershipId;
+  final String status;
+  final DateTime? detectedAt;
+  final int? distanceM;
+  final int samples;
+  final String? reviewComment;
+  final int version;
+
+  bool get requiresReview =>
+      status == 'unauthorized' || status == 'reconfirmed';
 }
 
 class AttendanceRecord {

@@ -53,6 +53,59 @@ class Department(Base):
     )
 
 
+class OrganizationGroup(Base):
+    __tablename__ = "organization_groups"
+    __table_args__ = (
+        UniqueConstraint("company_id", "id", name="uq_organization_groups_company_id"),
+        UniqueConstraint("company_id", "code", name="uq_organization_groups_company_code"),
+        Index("ix_organization_groups_company_active", "company_id", "is_active"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class EmployeeGroupMembership(Base):
+    __tablename__ = "employee_group_memberships"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "group_id"],
+            ["organization_groups.company_id", "organization_groups.id"],
+            name="fk_employee_group_memberships_company_group",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_employee_group_memberships_company_member",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "assigned_by_membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_employee_group_memberships_company_actor",
+        ),
+        UniqueConstraint(
+            "company_id", "group_id", "membership_id", name="uq_employee_group_memberships"
+        ),
+        Index("ix_employee_group_memberships_member", "company_id", "membership_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    group_id: Mapped[UUID] = mapped_column(nullable=False)
+    membership_id: Mapped[UUID] = mapped_column(nullable=False)
+    assigned_by_membership_id: Mapped[UUID] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class Branch(Base):
     __tablename__ = "branches"
     __table_args__ = (

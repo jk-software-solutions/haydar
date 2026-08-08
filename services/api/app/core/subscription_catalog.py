@@ -18,7 +18,7 @@ BUILTIN_PLANS: tuple[dict[str, object], ...] = (
         "limits": {"employees": 10, "branches": 3, "storage_mb": 100},
         "features": {
             "gps": True,
-            "qr": False,
+            "qr": True,
             "tasks": True,
             "documents": False,
             "reports": "basic",

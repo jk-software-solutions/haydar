@@ -8,14 +8,23 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import CurrentAuthSession
-from app.core.authorization import Permission, require_permission, tenant_context
+from app.core.authorization import (
+    Permission,
+    require_branch_scope,
+    require_group_scope,
+    require_membership_scope,
+    require_permission,
+    require_unrestricted_scope,
+    tenant_context,
+    visible_membership_ids,
+)
 from app.core.errors import ProblemError
 from app.core.subscription_catalog import active_subscription
 from app.db.session import get_session
 from app.models.attendance import AttendanceRecord
 from app.models.devices import AuditLog
 from app.models.identity import CompanyMembership
-from app.models.organization import EmployeeBranchAssignment
+from app.models.organization import EmployeeBranchAssignment, EmployeeGroupMembership
 from app.models.workforce import (
     EmployeeDocument,
     LeaveBalance,
@@ -54,11 +63,12 @@ class TaskCreateRequest(BaseModel):
     due_at: datetime | None = None
     membership_ids: list[UUID] = Field(default_factory=list, max_length=500)
     branch_id: UUID | None = None
+    group_id: UUID | None = None
 
     @model_validator(mode="after")
     def require_target(self) -> "TaskCreateRequest":
-        if not self.membership_ids and self.branch_id is None:
-            raise ValueError("membership_ids or branch_id is required")
+        if not self.membership_ids and self.branch_id is None and self.group_id is None:
+            raise ValueError("membership_ids, branch_id, or group_id is required")
         return self
 
 
@@ -336,7 +346,12 @@ async def valid_member_ids(
 
 
 async def can_access_task(
-    session: AsyncSession, company_id: UUID, membership_id: UUID, task_id: UUID, manager: bool
+    session: AsyncSession,
+    company_id: UUID,
+    membership_id: UUID,
+    task_id: UUID,
+    manager: bool,
+    visible_members: frozenset[UUID] | None,
 ) -> WorkTask:
     criteria = [WorkTask.company_id == company_id, WorkTask.id == task_id]
     if not manager:
@@ -347,6 +362,18 @@ async def can_access_task(
                     select(TaskAssignee.task_id).where(
                         TaskAssignee.company_id == company_id,
                         TaskAssignee.membership_id == membership_id,
+                    )
+                ),
+            )
+        )
+    elif visible_members is not None:
+        criteria.append(
+            or_(
+                WorkTask.created_by_membership_id == membership_id,
+                WorkTask.id.in_(
+                    select(TaskAssignee.task_id).where(
+                        TaskAssignee.company_id == company_id,
+                        TaskAssignee.membership_id.in_(visible_members),
                     )
                 ),
             )
@@ -380,12 +407,23 @@ async def create_task(
         )
     target_ids = set(payload.membership_ids)
     if payload.branch_id:
+        await require_branch_scope(session, context, payload.branch_id)
         target_ids.update(
             await session.scalars(
                 select(EmployeeBranchAssignment.membership_id).where(
                     EmployeeBranchAssignment.company_id == context.company_id,
                     EmployeeBranchAssignment.branch_id == payload.branch_id,
                     EmployeeBranchAssignment.effective_to.is_(None),
+                )
+            )
+        )
+    if payload.group_id:
+        await require_group_scope(session, context, payload.group_id)
+        target_ids.update(
+            await session.scalars(
+                select(EmployeeGroupMembership.membership_id).where(
+                    EmployeeGroupMembership.company_id == context.company_id,
+                    EmployeeGroupMembership.group_id == payload.group_id,
                 )
             )
         )
@@ -398,6 +436,14 @@ async def create_task(
             code="task_assignee_not_found",
             title="Task assignee not found",
             detail="Every assignee must be active in this company.",
+        )
+    visible = await visible_membership_ids(session, context)
+    if visible is not None and not target_ids.issubset(visible):
+        raise ProblemError(
+            status=404,
+            code="task_assignee_not_found",
+            title="Task assignee not found",
+            detail="Every assignee must belong to the current access scope.",
         )
     task = WorkTask(
         company_id=context.company_id,
@@ -463,6 +509,19 @@ async def list_tasks(
         )
     else:
         await require_permission(session, context, Permission.TASKS_VIEW)
+        visible = await visible_membership_ids(session, context)
+        if visible is not None:
+            criteria.append(
+                or_(
+                    WorkTask.created_by_membership_id == context.membership.id,
+                    WorkTask.id.in_(
+                        select(TaskAssignee.task_id).where(
+                            TaskAssignee.company_id == context.company_id,
+                            TaskAssignee.membership_id.in_(visible),
+                        )
+                    ),
+                )
+            )
     if task_status:
         if task_status not in TASK_STATUSES:
             raise ProblemError(
@@ -489,8 +548,9 @@ async def get_task(
 ) -> TaskResponse:
     context = tenant_context(auth_session)
     is_manager = context.membership.role_code in {"OWNER", "MANAGER", "HR_OFFICER", "SUPERVISOR"}
+    visible = await visible_membership_ids(session, context) if is_manager else None
     task = await can_access_task(
-        session, context.company_id, context.membership.id, task_id, is_manager
+        session, context.company_id, context.membership.id, task_id, is_manager, visible
     )
     assignee = await session.scalar(
         select(TaskAssignee)
@@ -519,8 +579,9 @@ async def update_task_status(
 ) -> TaskResponse:
     context = tenant_context(auth_session)
     is_manager = context.membership.role_code in {"OWNER", "MANAGER", "HR_OFFICER", "SUPERVISOR"}
+    visible = await visible_membership_ids(session, context) if is_manager else None
     task = await can_access_task(
-        session, context.company_id, context.membership.id, task_id, is_manager
+        session, context.company_id, context.membership.id, task_id, is_manager, visible
     )
     if task.version != payload.version:
         raise ProblemError(
@@ -569,7 +630,10 @@ async def manager_update_task(
 ) -> TaskResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.TASKS_MANAGE)
-    task = await can_access_task(session, context.company_id, context.membership.id, task_id, True)
+    visible = await visible_membership_ids(session, context)
+    task = await can_access_task(
+        session, context.company_id, context.membership.id, task_id, True, visible
+    )
     if task.version != payload.version:
         raise ProblemError(
             status=409,
@@ -590,6 +654,13 @@ async def manager_update_task(
                 code="task_assignee_not_found",
                 title="Task assignee not found",
                 detail="Every assignee must be active in this company.",
+            )
+        if visible is not None and not requested.issubset(visible):
+            raise ProblemError(
+                status=404,
+                code="task_assignee_not_found",
+                title="Task assignee not found",
+                detail="Every assignee must belong to the current access scope.",
             )
         existing = list(
             await session.scalars(
@@ -625,8 +696,9 @@ async def add_task_comment(
 ) -> TaskCommentResponse:
     context = tenant_context(auth_session)
     is_manager = context.membership.role_code in {"OWNER", "MANAGER", "HR_OFFICER", "SUPERVISOR"}
+    visible = await visible_membership_ids(session, context) if is_manager else None
     task = await can_access_task(
-        session, context.company_id, context.membership.id, task_id, is_manager
+        session, context.company_id, context.membership.id, task_id, is_manager, visible
     )
     comment = TaskComment(
         company_id=context.company_id,
@@ -646,7 +718,10 @@ async def list_task_comments(
 ) -> list[TaskCommentResponse]:
     context = tenant_context(auth_session)
     is_manager = context.membership.role_code in {"OWNER", "MANAGER", "HR_OFFICER", "SUPERVISOR"}
-    await can_access_task(session, context.company_id, context.membership.id, task_id, is_manager)
+    visible = await visible_membership_ids(session, context) if is_manager else None
+    await can_access_task(
+        session, context.company_id, context.membership.id, task_id, is_manager, visible
+    )
     items = await session.scalars(
         select(TaskComment)
         .where(TaskComment.company_id == context.company_id, TaskComment.task_id == task_id)
@@ -661,6 +736,7 @@ async def create_leave_type(
 ) -> LeaveTypeResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.LEAVE_MANAGE)
+    await require_unrestricted_scope(session, context)
     item = LeaveType(
         company_id=context.company_id,
         code=payload.code.strip().upper(),
@@ -693,6 +769,7 @@ async def set_leave_balance(
 ) -> LeaveBalanceResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.LEAVE_MANAGE)
+    await require_membership_scope(session, context, payload.membership_id)
     member = await valid_member_ids(session, context.company_id, {payload.membership_id})
     leave_type = await session.scalar(
         select(LeaveType.id).where(
@@ -764,6 +841,7 @@ async def list_leave_balances(
     target = membership_id or context.membership.id
     if target != context.membership.id:
         await require_permission(session, context, Permission.LEAVE_VIEW)
+        await require_membership_scope(session, context, target)
     items = await session.scalars(
         select(LeaveBalance)
         .where(LeaveBalance.company_id == context.company_id, LeaveBalance.membership_id == target)
@@ -855,6 +933,9 @@ async def list_leave_requests(
         criteria.append(LeaveRequest.membership_id == context.membership.id)
     else:
         await require_permission(session, context, Permission.LEAVE_VIEW)
+        visible = await visible_membership_ids(session, context)
+        if visible is not None:
+            criteria.append(LeaveRequest.membership_id.in_(visible))
     if request_status:
         criteria.append(LeaveRequest.status == request_status)
     items = await session.scalars(
@@ -888,6 +969,7 @@ async def review_leave_request(
             title="Leave request not found",
             detail="A pending request was not found in this company.",
         )
+    await require_membership_scope(session, context, item.membership_id)
     if payload.decision == "approved":
         balance = await session.scalar(
             select(LeaveBalance)
@@ -965,6 +1047,7 @@ async def create_document(
     target = payload.membership_id or context.membership.id
     if target != context.membership.id:
         await require_permission(session, context, Permission.DOCUMENTS_MANAGE)
+        await require_membership_scope(session, context, target)
     if not await valid_member_ids(session, context.company_id, {target}):
         raise ProblemError(
             status=404,
@@ -992,9 +1075,14 @@ async def list_documents(
     target = membership_id or (None if can_view_all else context.membership.id)
     if target is not None and target != context.membership.id:
         await require_permission(session, context, Permission.DOCUMENTS_VIEW)
+        await require_membership_scope(session, context, target)
     criteria = [EmployeeDocument.company_id == context.company_id]
     if target is not None:
         criteria.append(EmployeeDocument.membership_id == target)
+    elif can_view_all:
+        visible = await visible_membership_ids(session, context)
+        if visible is not None:
+            criteria.append(EmployeeDocument.membership_id.in_(visible))
     if expiring_within_days is not None:
         criteria.extend(
             [
@@ -1033,6 +1121,7 @@ async def review_document(
             title="Document not found",
             detail="The document was not found in this company.",
         )
+    await require_membership_scope(session, context, item.membership_id)
     item.review_status = payload.decision
     item.version += 1
     session.add(
