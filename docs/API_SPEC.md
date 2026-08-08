@@ -196,10 +196,22 @@ client-supplied tenant ownership, and return RFC 9457-style problem responses.
   `POST/GET /tasks/{id}/comments`.
 - Leave: `POST/GET /leave/types`, `PUT/GET /leave/balances`, `POST/GET /leave/requests`, and
   `POST /leave/requests/{id}/review`.
-- Documents and files: `POST/GET /documents`, `POST /documents/{id}/review`,
+- Documents and files: `POST/GET /documents`, `GET/PATCH/DELETE /documents/{id}`,
+  `POST /documents/{id}/review`,
   `POST /files`, and `GET /files/{id}`. Uploads are limited to 10 MiB, validated by media type,
   subscription storage allowance, tenant, and employee ownership.
-- Notifications: `GET /notifications` and `POST /notifications/{id}/read`.
+- Notifications: list/unread count, read-one/read-all, preferences, push-token registry and provider
+  status under `/notifications`.
+
+Authentication accepts `identifier` (normalized email or administrator-verified E.164 phone) plus
+password; the legacy `email` request key remains accepted for compatibility. Company registration
+creates the owner session and trial. Platform APIs include versioned plan CRUD, restricted coupons,
+idempotent subscription activation, session-revoking suspension, and support-mode list/exit.
+
+Attendance QR administration includes create/list/revoke/rotate. Rotation revokes every active token
+for that branch in the same transaction. Task status updates that request more time require a reason
+and requested due date; `/tasks/{id}/extension-decision` records the manager decision and approved
+due date.
 - Reports: `GET /reports/overview`, `GET /reports/attendance`, leaderboard settings/list,
   `POST/GET /reports/exports`, and `GET /reports/exports/{id}/download`.
 - Billing: public `GET /billing/plans`, tenant `GET /billing/subscription`, coupon validation,

@@ -26,6 +26,13 @@ type TokenResponse = {
   session: WebSession;
 };
 
+export type RegisterCompanyInput = {
+  company_name: string;
+  owner_full_name: string;
+  owner_email: string;
+  password: string;
+};
+
 export type ApiProblem = {
   code?: string;
   detail?: string;
@@ -42,11 +49,11 @@ async function readProblem(response: Response): Promise<ApiProblem> {
   }
 }
 
-export async function loginWithApi(email: string, password: string): Promise<WebSession> {
+export async function loginWithApi(identifier: string, password: string): Promise<WebSession> {
   const response = await fetch(`${apiBaseUrl}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ identifier, password }),
     cache: "no-store",
   });
   if (!response.ok) {
@@ -54,6 +61,24 @@ export async function loginWithApi(email: string, password: string): Promise<Web
     throw new Error(problem.detail ?? "Authentication failed.");
   }
   const payload = (await response.json()) as TokenResponse;
+  return persistTokenResponse(payload);
+}
+
+export async function registerCompanyWithApi(input: RegisterCompanyInput): Promise<WebSession> {
+  const response = await fetch(`${apiBaseUrl}/auth/register-company`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const problem = await readProblem(response);
+    throw new Error(problem.detail ?? "Company registration failed.");
+  }
+  return persistTokenResponse((await response.json()) as TokenResponse);
+}
+
+async function persistTokenResponse(payload: TokenResponse): Promise<WebSession> {
   const cookieStore = await cookies();
   const common = {
     httpOnly: true,

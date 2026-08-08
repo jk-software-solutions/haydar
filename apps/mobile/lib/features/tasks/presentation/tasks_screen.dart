@@ -60,6 +60,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
 
   Future<void> _change(WorkTask task, String status) async {
     String? reason;
+    DateTime? requestedDueAt;
     if (<String>{'blocked', 'postponed', 'needs_more_time'}.contains(status)) {
       final controller = TextEditingController();
       reason = await showDialog<String>(
@@ -82,10 +83,74 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
       controller.dispose();
       if (reason == null || reason.isEmpty) return;
     }
+    if (status == 'needs_more_time') {
+      if (!mounted) return;
+      final date = await showDatePicker(
+        context: context,
+        initialDate: (task.dueAt ?? DateTime.now()).add(
+          const Duration(days: 1),
+        ),
+        firstDate: DateTime.now(),
+        lastDate: DateTime.now().add(const Duration(days: 365)),
+      );
+      if (date == null) return;
+      requestedDueAt = DateTime(date.year, date.month, date.day, 17);
+    }
     try {
       await ref
           .read(taskApiProvider)
-          .updateStatus(widget.session, task, status, reason);
+          .updateStatus(widget.session, task, status, reason, requestedDueAt);
+      await _refresh();
+    } on Object catch (error) {
+      if (mounted) setState(() => _error = _message(error));
+    }
+  }
+
+  Future<void> _decideExtension(WorkTask task, String decision) async {
+    DateTime? newDueAt;
+    if (decision == 'approved') {
+      final date = await showDatePicker(
+        context: context,
+        initialDate:
+            task.latestExtension?.requestedDueAt?.toLocal() ??
+            DateTime.now().add(const Duration(days: 1)),
+        firstDate: DateTime.now(),
+        lastDate: DateTime.now().add(const Duration(days: 365)),
+      );
+      if (date == null) return;
+      newDueAt = DateTime(date.year, date.month, date.day, 17);
+    }
+    if (!mounted) return;
+    final controller = TextEditingController();
+    final comment = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(_ar ? 'تعليق قرار التمديد' : 'Extension decision comment'),
+        content: TextField(controller: controller, maxLines: 3),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_ar ? 'إلغاء' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: Text(_ar ? 'حفظ القرار' : 'Save decision'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (comment == null || comment.length < 2) return;
+    try {
+      await ref
+          .read(taskApiProvider)
+          .decideExtension(
+            widget.session,
+            task,
+            decision: decision,
+            comment: comment,
+            newDueAt: newDueAt,
+          );
       await _refresh();
     } on Object catch (error) {
       if (mounted) setState(() => _error = _message(error));
@@ -150,6 +215,34 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                     child: Text(task.description),
                   ),
                   const SizedBox(height: 14),
+                  if (task.latestExtension != null) ...<Widget>[
+                    Card(
+                      child: ListTile(
+                        title: Text(
+                          _ar ? 'طلب وقت إضافي' : 'Extension request',
+                        ),
+                        subtitle: Text(
+                          '${task.latestExtension!.reason}\n${task.latestExtension!.status} · ${task.latestExtension!.requestedDueAt?.toLocal() ?? '—'}',
+                        ),
+                        isThreeLine: true,
+                      ),
+                    ),
+                    if (widget.managerMode &&
+                        task.latestExtension!.status == 'pending')
+                      Wrap(
+                        spacing: 8,
+                        children: <Widget>[
+                          FilledButton(
+                            onPressed: () => _decideExtension(task, 'approved'),
+                            child: Text(_ar ? 'موافقة وتمديد' : 'Approve'),
+                          ),
+                          OutlinedButton(
+                            onPressed: () => _decideExtension(task, 'rejected'),
+                            child: Text(_ar ? 'رفض التمديد' : 'Reject'),
+                          ),
+                        ],
+                      ),
+                  ],
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,

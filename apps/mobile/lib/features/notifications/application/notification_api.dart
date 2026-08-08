@@ -40,6 +40,69 @@ class NotificationApi {
 
   Future<void> markAllRead(AuthSession session) =>
       dio.post<void>('/notifications/read-all', options: _auth(session));
+
+  Future<NotificationPreferences> preferences(AuthSession session) async {
+    final response = await dio.get<Map<String, dynamic>>(
+      '/notifications/preferences',
+      options: _auth(session),
+    );
+    return NotificationPreferences.fromJson(
+      response.data ?? <String, dynamic>{},
+    );
+  }
+
+  Future<NotificationPreferences> updatePreferences(
+    AuthSession session,
+    NotificationPreferences preferences,
+  ) async {
+    final response = await dio.put<Map<String, dynamic>>(
+      '/notifications/preferences',
+      options: _auth(session),
+      data: preferences.toJson(),
+    );
+    return NotificationPreferences.fromJson(
+      response.data ?? <String, dynamic>{},
+    );
+  }
+}
+
+class NotificationPreferences {
+  const NotificationPreferences({
+    required this.inAppEnabled,
+    required this.pushEnabled,
+    required this.emailEnabled,
+    required this.mutedKinds,
+    required this.quietHoursStart,
+    required this.quietHoursEnd,
+  });
+
+  factory NotificationPreferences.fromJson(Map<String, dynamic> json) =>
+      NotificationPreferences(
+        inAppEnabled: json['in_app_enabled'] as bool? ?? true,
+        pushEnabled: json['push_enabled'] as bool? ?? true,
+        emailEnabled: json['email_enabled'] as bool? ?? false,
+        mutedKinds: (json['muted_kinds'] as List<dynamic>? ?? <dynamic>[])
+            .map((value) => '$value')
+            .toList(growable: false),
+        quietHoursStart: json['quiet_hours_start'] as String?,
+        quietHoursEnd: json['quiet_hours_end'] as String?,
+      );
+
+  final bool inAppEnabled;
+  final bool pushEnabled;
+  final bool emailEnabled;
+  final List<String> mutedKinds;
+  final String? quietHoursStart;
+  final String? quietHoursEnd;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'in_app_enabled': inAppEnabled,
+    'push_enabled': pushEnabled,
+    'email_enabled': emailEnabled,
+    'muted_kinds': mutedKinds,
+    'quiet_hours_start': quietHoursStart,
+    'quiet_hours_end': quietHoursEnd,
+  };
 }
 
 class AppNotification {

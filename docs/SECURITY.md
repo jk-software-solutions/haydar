@@ -10,7 +10,12 @@ on the server.
 ## Identity and sessions
 
 - Hash passwords with Argon2id and configurable memory/time parameters.
-- Normalize and uniquely index verified email/phone identities.
+- Normalize email and strict E.164 phone identities. Phone login is enabled only after an authorized
+  company administrator assigns the employee number; assignment takes a PostgreSQL advisory lock,
+  the global unique index prevents races/takeover, and clearing the profile phone disables login.
+  This is enterprise administrator verification, not SMS possession verification. If SMS is later
+  selected, add expiring OTP attempts, resend/rate limits and provider delivery evidence before
+  describing the phone as possession-verified.
 - Use short-lived access JWTs and rotating refresh sessions with hashed token
   identifiers, expiry, revocation, family linkage and reuse detection.
 - Revoke sessions on secure logout, account deactivation, password reset and

@@ -90,6 +90,8 @@ private network.
 - [Platform owner guide](docs/SUPER_ADMIN_GUIDE.md)
 - [Database operations](docs/DATABASE_OPERATIONS.md)
 - [Google Play release](docs/GOOGLE_PLAY_RELEASE.md)
+- [Release checklist](docs/RELEASE_CHECKLIST.md)
+- [Client-owned credentials checklist](docs/CREDENTIALS_CHECKLIST.md)
 - [Privacy policy template](docs/PRIVACY_POLICY.md)
 - [Support information](docs/SUPPORT.md)
 - [Known limitations](docs/KNOWN_LIMITATIONS.md)

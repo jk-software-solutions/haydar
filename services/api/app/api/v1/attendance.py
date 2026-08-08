@@ -131,9 +131,18 @@ class CreateQrRequest(BaseModel):
 
 
 class QrTokenResponse(BaseModel):
+    id: UUID
     token: str
     branch_id: UUID
     expires_at: datetime
+
+
+class QrTokenSummaryResponse(BaseModel):
+    id: UUID
+    branch_id: UUID
+    expires_at: datetime
+    revoked_at: datetime | None
+    created_at: datetime
 
 
 class PermissionCreateRequest(BaseModel):
@@ -1041,17 +1050,162 @@ async def create_qr_token(
         )
     raw_token = token_urlsafe(32)
     expires_at = datetime.now(UTC) + timedelta(seconds=payload.valid_for_seconds)
+    item = BranchQrToken(
+        company_id=context.company_id,
+        branch_id=payload.branch_id,
+        created_by_membership_id=context.membership.id,
+        token_hash=qr_hash(raw_token),
+        expires_at=expires_at,
+    )
+    session.add(item)
+    await session.flush()
     session.add(
-        BranchQrToken(
+        AuditLog(
             company_id=context.company_id,
-            branch_id=payload.branch_id,
-            created_by_membership_id=context.membership.id,
-            token_hash=qr_hash(raw_token),
-            expires_at=expires_at,
+            actor_membership_id=context.membership.id,
+            action="attendance.qr_token_created",
+            target_type="branch_qr_token",
+            target_id=item.id,
+            details={"branch_id": str(payload.branch_id), "expires_at": expires_at.isoformat()},
         )
     )
     await session.commit()
-    return QrTokenResponse(token=raw_token, branch_id=payload.branch_id, expires_at=expires_at)
+    return QrTokenResponse(
+        id=item.id,
+        token=raw_token,
+        branch_id=payload.branch_id,
+        expires_at=expires_at,
+    )
+
+
+@router.get("/qr-tokens", response_model=list[QrTokenSummaryResponse])
+async def list_qr_tokens(
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+    branch_id: UUID | None = None,
+    include_inactive: bool = False,
+) -> list[QrTokenSummaryResponse]:
+    context = tenant_context(auth_session)
+    await require_permission(session, context, Permission.ATTENDANCE_MANAGE)
+    criteria = [BranchQrToken.company_id == context.company_id]
+    if branch_id is not None:
+        await require_branch_scope(session, context, branch_id)
+        criteria.append(BranchQrToken.branch_id == branch_id)
+    if not include_inactive:
+        criteria.extend(
+            [
+                BranchQrToken.revoked_at.is_(None),
+                BranchQrToken.expires_at > datetime.now(UTC),
+            ]
+        )
+    items = await session.scalars(
+        select(BranchQrToken).where(*criteria).order_by(BranchQrToken.created_at.desc()).limit(1000)
+    )
+    return [QrTokenSummaryResponse.model_validate(item, from_attributes=True) for item in items]
+
+
+@router.post("/qr-tokens/rotate", response_model=QrTokenResponse, status_code=201)
+async def rotate_qr_token(
+    payload: CreateQrRequest,
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> QrTokenResponse:
+    context = tenant_context(auth_session)
+    await require_permission(session, context, Permission.ATTENDANCE_MANAGE)
+    await require_branch_scope(session, context, payload.branch_id)
+    branch = await session.scalar(
+        select(Branch.id).where(
+            Branch.company_id == context.company_id,
+            Branch.id == payload.branch_id,
+            Branch.is_active.is_(True),
+        )
+    )
+    if branch is None:
+        raise ProblemError(
+            status=404,
+            code="branch_not_found",
+            title="Branch not found",
+            detail="The active branch was not found in this company.",
+        )
+    now = datetime.now(UTC)
+    active_items = await session.scalars(
+        select(BranchQrToken)
+        .where(
+            BranchQrToken.company_id == context.company_id,
+            BranchQrToken.branch_id == payload.branch_id,
+            BranchQrToken.revoked_at.is_(None),
+            BranchQrToken.expires_at > now,
+        )
+        .with_for_update()
+    )
+    for existing in active_items:
+        existing.revoked_at = now
+    raw_token = token_urlsafe(32)
+    item = BranchQrToken(
+        company_id=context.company_id,
+        branch_id=payload.branch_id,
+        created_by_membership_id=context.membership.id,
+        token_hash=qr_hash(raw_token),
+        expires_at=now + timedelta(seconds=payload.valid_for_seconds),
+    )
+    session.add(item)
+    await session.flush()
+    session.add(
+        AuditLog(
+            company_id=context.company_id,
+            actor_membership_id=context.membership.id,
+            action="attendance.qr_tokens_rotated",
+            target_type="branch_qr_token",
+            target_id=item.id,
+            details={"branch_id": str(payload.branch_id)},
+        )
+    )
+    await session.commit()
+    return QrTokenResponse(
+        id=item.id,
+        token=raw_token,
+        branch_id=item.branch_id,
+        expires_at=item.expires_at,
+    )
+
+
+@router.delete("/qr-tokens/{token_id}", status_code=204)
+async def revoke_qr_token(
+    token_id: UUID,
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> None:
+    context = tenant_context(auth_session)
+    await require_permission(session, context, Permission.ATTENDANCE_MANAGE)
+    item = await session.scalar(
+        select(BranchQrToken)
+        .where(
+            BranchQrToken.company_id == context.company_id,
+            BranchQrToken.id == token_id,
+        )
+        .with_for_update()
+    )
+    if item is None:
+        raise ProblemError(
+            status=404,
+            code="qr_token_not_found",
+            title="QR token not found",
+            detail="The QR token does not exist in this company.",
+        )
+    await require_branch_scope(session, context, item.branch_id)
+    if item.revoked_at is None:
+        item.revoked_at = datetime.now(UTC)
+        session.add(
+            AuditLog(
+                company_id=context.company_id,
+                actor_membership_id=context.membership.id,
+                action="attendance.qr_token_revoked",
+                target_type="branch_qr_token",
+                target_id=item.id,
+                details={"branch_id": str(item.branch_id)},
+            )
+        )
+        await session.commit()
 
 
 @permissions_router.post("", response_model=PermissionResponse, status_code=201)

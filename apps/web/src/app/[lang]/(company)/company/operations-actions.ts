@@ -73,7 +73,23 @@ export async function updateTaskStatusAction(
     version,
     status: text(formData, "status"),
     reason: optionalText(formData, "reason"),
+    requested_due_at: optionalText(formData, "requested_due_at"),
     completion_attachment_file_id: optionalText(formData, "completion_attachment_file_id"),
+  });
+}
+
+export async function decideTaskExtensionAction(
+  locale: string,
+  taskId: string,
+  version: number,
+  decision: "approved" | "rejected",
+  formData: FormData,
+): Promise<void> {
+  await mutate(locale, `/tasks/${taskId}/extension-decision`, "POST", {
+    version,
+    decision,
+    new_due_at: decision === "approved" ? optionalText(formData, "new_due_at") : undefined,
+    comment: text(formData, "comment"),
   });
 }
 
@@ -153,6 +169,34 @@ export async function reviewDocumentAction(
   await mutate(locale, `/documents/${documentId}/review`, "POST", { decision });
 }
 
+export async function updateDocumentAction(
+  locale: string,
+  documentId: string,
+  formData: FormData,
+): Promise<void> {
+  await mutate(locale, `/documents/${documentId}`, "PATCH", {
+    version: Number(text(formData, "version")),
+    document_type: text(formData, "document_type"),
+    custom_type_name: optionalText(formData, "custom_type_name"),
+    document_number: optionalText(formData, "document_number"),
+    issued_on: optionalText(formData, "issued_on"),
+    expires_on: optionalText(formData, "expires_on"),
+    attachment_file_id: text(formData, "attachment_file_id"),
+    reminder_days: Number(text(formData, "reminder_days") || "30"),
+  });
+}
+
+export async function deleteDocumentAction(
+  locale: string,
+  documentId: string,
+  version: number,
+): Promise<void> {
+  const session = await getWebSession();
+  if (!session) return;
+  await authorizedApiFetch(`/documents/${documentId}?version=${version}`, { method: "DELETE" });
+  revalidatePath(`/${locale}/company`);
+}
+
 export async function createManualAttendanceAction(
   locale: string,
   formData: FormData,
@@ -168,7 +212,7 @@ export async function createManualAttendanceAction(
   });
 }
 
-export type QrTokenState = { token?: string; expiresAt?: string; message?: string };
+export type QrTokenState = { tokenId?: string; token?: string; expiresAt?: string; message?: string };
 
 export async function createQrTokenAction(
   _locale: string,
@@ -176,20 +220,31 @@ export async function createQrTokenAction(
   formData: FormData,
 ): Promise<QrTokenState> {
   if (!(await getWebSession())) return { message: "Authentication required." };
-  const response = await authorizedApiFetch("/attendance/qr-tokens", {
+  const response = await authorizedApiFetch(
+    formData.get("rotate") === "true"
+      ? "/attendance/qr-tokens/rotate"
+      : "/attendance/qr-tokens",
+    {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       branch_id: text(formData, "branch_id"),
       valid_for_seconds: Number(text(formData, "valid_for_seconds") || "120"),
     }),
-  });
+    },
+  );
   if (!response.ok) {
     const problem = (await response.json().catch(() => ({}))) as { detail?: string };
     return { message: problem.detail ?? "QR creation failed." };
   }
-  const payload = (await response.json()) as { token: string; expires_at: string };
-  return { token: payload.token, expiresAt: payload.expires_at };
+  const payload = (await response.json()) as { id: string; token: string; expires_at: string };
+  return { tokenId: payload.id, token: payload.token, expiresAt: payload.expires_at };
+}
+
+export async function revokeQrTokenAction(locale: string, tokenId: string): Promise<void> {
+  if (!(await getWebSession())) return;
+  await authorizedApiFetch(`/attendance/qr-tokens/${tokenId}`, { method: "DELETE" });
+  revalidatePath(`/${locale}/company`);
 }
 
 export async function createPresenceRequestAction(locale: string, formData: FormData): Promise<void> {
@@ -221,6 +276,20 @@ export async function reviewGeofenceExitAction(
     decision,
     version,
     comment: text(formData, "comment"),
+  });
+}
+
+export async function updateNotificationPreferencesAction(
+  locale: string,
+  formData: FormData,
+): Promise<void> {
+  await mutate(locale, "/notifications/preferences", "PUT", {
+    in_app_enabled: formData.get("in_app_enabled") === "on",
+    push_enabled: formData.get("push_enabled") === "on",
+    email_enabled: formData.get("email_enabled") === "on",
+    muted_kinds: text(formData, "muted_kinds").split(",").map((value) => value.trim()).filter(Boolean),
+    quiet_hours_start: optionalText(formData, "quiet_hours_start"),
+    quiet_hours_end: optionalText(formData, "quiet_hours_end"),
   });
 }
 

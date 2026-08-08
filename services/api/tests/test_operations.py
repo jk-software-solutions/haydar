@@ -148,6 +148,72 @@ async def test_attendance_requires_approved_device_and_tracks_session(
     assert registration.status_code == 201
     assert registration.json()["device"]["status"] == "approved"
 
+    rotated = await db_client.post(
+        "/api/v1/attendance/qr-tokens/rotate",
+        headers=auth_headers(owner),
+        json={"branch_id": branch["id"], "valid_for_seconds": 900},
+    )
+    assert rotated.status_code == 201
+    invalidated_previous = await db_client.post(
+        "/api/v1/attendance/check-in",
+        headers=auth_headers(employee, installation_id),
+        json=action,
+    )
+    assert invalidated_previous.status_code == 403
+    assert invalidated_previous.json()["code"] == "qr_token_invalid"
+    action["qr_token"] = rotated.json()["token"]
+    revocable = await db_client.post(
+        "/api/v1/attendance/qr-tokens",
+        headers=auth_headers(owner),
+        json={"branch_id": branch["id"], "valid_for_seconds": 900},
+    )
+    assert revocable.status_code == 201
+    revoked = await db_client.delete(
+        f"/api/v1/attendance/qr-tokens/{revocable.json()['id']}",
+        headers=auth_headers(owner),
+    )
+    assert revoked.status_code == 204
+    revoked_attempt = await db_client.post(
+        "/api/v1/attendance/check-in",
+        headers=auth_headers(employee, installation_id),
+        json={**action, "qr_token": revocable.json()["token"]},
+    )
+    assert revoked_attempt.status_code == 403
+    active_tokens = await db_client.get(
+        f"/api/v1/attendance/qr-tokens?branch_id={branch['id']}",
+        headers=auth_headers(owner),
+    )
+    assert active_tokens.status_code == 200
+    assert [item["id"] for item in active_tokens.json()] == [rotated.json()["id"]]
+    other_branch = await db_client.post(
+        "/api/v1/branches",
+        headers=auth_headers(owner),
+        json={
+            "code": "OTHER",
+            "name": "Other Branch",
+            "full_address": "Jeddah",
+            "latitude": "24.713600",
+            "longitude": "46.675300",
+            "geofence_radius_m": 150,
+            "timezone": "Asia/Riyadh",
+            "working_hours": {},
+        },
+    )
+    assert other_branch.status_code == 201
+    wrong_branch_qr = await db_client.post(
+        "/api/v1/attendance/qr-tokens",
+        headers=auth_headers(owner),
+        json={"branch_id": other_branch.json()["id"], "valid_for_seconds": 900},
+    )
+    assert wrong_branch_qr.status_code == 201
+    wrong_branch_attempt = await db_client.post(
+        "/api/v1/attendance/check-in",
+        headers=auth_headers(employee, installation_id),
+        json={**action, "qr_token": wrong_branch_qr.json()["token"]},
+    )
+    assert wrong_branch_attempt.status_code == 403
+    assert wrong_branch_attempt.json()["code"] == "qr_token_invalid"
+
     check_in_headers = {
         **auth_headers(employee, installation_id),
         "Idempotency-Key": "attendance-check-in-001",
@@ -571,6 +637,61 @@ async def test_tasks_leave_files_exports_and_tenant_isolation(
     )
     assert linked_download.status_code == 200
     assert linked_download.content == b"protected contract"
+    document_id = document.json()["id"]
+    detail = await db_client.get(f"/api/v1/documents/{document_id}", headers=auth_headers(employee))
+    assert detail.status_code == 200
+    metadata_update = await db_client.patch(
+        f"/api/v1/documents/{document_id}",
+        headers=auth_headers(owner),
+        json={
+            "version": document.json()["version"],
+            "document_type": "employment_contract",
+            "document_number": "CONTRACT-2026-001",
+            "issued_on": "2026-08-01",
+            "expires_on": "2027-08-01",
+            "attachment_file_id": manager_file_id,
+            "reminder_days": 45,
+        },
+    )
+    assert metadata_update.status_code == 200
+    assert metadata_update.json()["review_status"] == "pending_review"
+    stale_update = await db_client.patch(
+        f"/api/v1/documents/{document_id}",
+        headers=auth_headers(owner),
+        json={
+            "version": document.json()["version"],
+            "document_type": "employment_contract",
+            "attachment_file_id": manager_file_id,
+            "reminder_days": 30,
+        },
+    )
+    assert stale_update.status_code == 409
+    employee_upload = await db_client.post(
+        "/api/v1/files",
+        headers=auth_headers(employee),
+        files={"upload": ("signed-contract.pdf", b"signed contract", "application/pdf")},
+    )
+    assert employee_upload.status_code == 201
+    replacement_file_id = employee_upload.json()["id"]
+    replacement = await db_client.patch(
+        f"/api/v1/documents/{document_id}",
+        headers=auth_headers(employee),
+        json={
+            "version": metadata_update.json()["version"],
+            "document_type": "employment_contract",
+            "document_number": "CONTRACT-2026-001",
+            "issued_on": "2026-08-01",
+            "expires_on": "2027-08-01",
+            "attachment_file_id": replacement_file_id,
+            "reminder_days": 45,
+        },
+    )
+    assert replacement.status_code == 200
+    assert replacement.json()["attachment_file_id"] == replacement_file_id
+    cross_tenant_detail = await db_client.get(
+        f"/api/v1/documents/{document_id}", headers=auth_headers(other_owner)
+    )
+    assert cross_tenant_detail.status_code == 404
     stolen_attachment = await db_client.post(
         "/api/v1/permission-requests",
         headers=auth_headers(employee),
@@ -592,6 +713,15 @@ async def test_tasks_leave_files_exports_and_tenant_isolation(
         },
     )
     assert cross_tenant_document.status_code == 404
+    deleted = await db_client.delete(
+        f"/api/v1/documents/{document_id}?version={replacement.json()['version']}",
+        headers=auth_headers(owner),
+    )
+    assert deleted.status_code == 204
+    missing_detail = await db_client.get(
+        f"/api/v1/documents/{document_id}", headers=auth_headers(employee)
+    )
+    assert missing_detail.status_code == 404
 
     export_headers = {
         **auth_headers(owner),

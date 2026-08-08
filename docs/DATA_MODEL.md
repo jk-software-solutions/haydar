@@ -15,7 +15,8 @@
 
 ## Identity and tenancy
 
-- `users`: global identity, normalized email/phone, password hash, activation
+- `users`: global identity, normalized email plus unique administrator-verified E.164 phone,
+  password hash and activation state
   status and locale.
 - `user_sessions`: refresh-session hash/JTI, device, expiry, revocation and
   reuse-family metadata.
@@ -136,7 +137,8 @@ Revisions `20260808_0008` through `20260808_0012` add:
 
 - `attendance_records`, immutable-style `attendance_events`, `branch_qr_tokens`,
   `permission_requests`, `presence_requests`, and `presence_recipients`;
-- `work_tasks`, assignees, comments, status history, notifications, leave types/balances/requests,
+- `work_tasks`, assignees, comments, status history, explicit task extension requests/decisions,
+  notifications/preferences/delivery, leave types/balances/requests,
   and employee documents;
 - subscription plans/company subscriptions, coupons/redemptions, export jobs, support sessions,
   platform settings/audit logs, and attendance leaderboard privacy settings; and

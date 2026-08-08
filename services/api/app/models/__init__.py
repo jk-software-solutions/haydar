@@ -50,6 +50,7 @@ from app.models.workforce import (
     PushDeviceToken,
     TaskAssignee,
     TaskComment,
+    TaskExtensionRequest,
     TaskStatusHistory,
     WorkTask,
 )
@@ -101,6 +102,7 @@ __all__ = [
     "PushDeviceToken",
     "TaskAssignee",
     "TaskComment",
+    "TaskExtensionRequest",
     "TaskStatusHistory",
     "WorkTask",
     "AttendanceLeaderboardSetting",

@@ -36,6 +36,7 @@ from app.models.workforce import (
     PushDeviceToken,
     TaskAssignee,
     TaskComment,
+    TaskExtensionRequest,
     TaskStatusHistory,
     WorkTask,
 )
@@ -87,11 +88,14 @@ class TaskUpdateRequest(BaseModel):
     ]
     reason: str | None = Field(default=None, max_length=2000)
     completion_attachment_file_id: UUID | None = None
+    requested_due_at: datetime | None = None
 
     @model_validator(mode="after")
     def require_reason(self) -> "TaskUpdateRequest":
         if self.status in {"postponed", "needs_more_time", "blocked"} and not self.reason:
             raise ValueError("reason is required for this status")
+        if self.status == "needs_more_time" and self.requested_due_at is None:
+            raise ValueError("requested_due_at is required when requesting more time")
         return self
 
 
@@ -116,6 +120,34 @@ class TaskCommentResponse(BaseModel):
     created_at: datetime
 
 
+class TaskExtensionResponse(BaseModel):
+    id: UUID
+    requested_by_membership_id: UUID
+    reason: str
+    requested_due_at: datetime | None
+    status: str
+    decided_by_membership_id: UUID | None
+    decision_comment: str | None
+    approved_due_at: datetime | None
+    decided_at: datetime | None
+    created_at: datetime
+
+
+class TaskExtensionDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
+    decision: Literal["approved", "rejected"]
+    new_due_at: datetime | None = None
+    comment: str = Field(min_length=2, max_length=2000)
+
+    @model_validator(mode="after")
+    def require_new_due_date(self) -> "TaskExtensionDecisionRequest":
+        if self.decision == "approved" and self.new_due_at is None:
+            raise ValueError("new_due_at is required when approving an extension")
+        return self
+
+
 class TaskResponse(BaseModel):
     id: UUID
     title: str
@@ -127,6 +159,7 @@ class TaskResponse(BaseModel):
     assignee_ids: list[UUID]
     viewed_by_ids: list[UUID]
     completion_attachment_file_id: UUID | None
+    latest_extension: TaskExtensionResponse | None
     version: int
     created_at: datetime
     updated_at: datetime
@@ -236,6 +269,35 @@ class DocumentReviewRequest(BaseModel):
     decision: Literal["valid", "pending_review", "rejected"]
 
 
+class DocumentUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
+    document_type: Literal[
+        "residency",
+        "passport",
+        "medical_insurance",
+        "employment_contract",
+        "driving_license",
+        "vehicle_insurance",
+        "custom",
+    ]
+    custom_type_name: str | None = Field(default=None, max_length=160)
+    document_number: str | None = Field(default=None, max_length=120)
+    issued_on: date | None = None
+    expires_on: date | None = None
+    attachment_file_id: UUID
+    reminder_days: int = Field(default=30, ge=0, le=365)
+
+    @model_validator(mode="after")
+    def validate_document(self) -> "DocumentUpdateRequest":
+        if self.document_type == "custom" and not self.custom_type_name:
+            raise ValueError("custom_type_name is required")
+        if self.issued_on and self.expires_on and self.expires_on < self.issued_on:
+            raise ValueError("expires_on cannot precede issued_on")
+        return self
+
+
 class DocumentResponse(BaseModel):
     id: UUID
     membership_id: UUID
@@ -249,6 +311,8 @@ class DocumentResponse(BaseModel):
     status: str
     review_status: str
     version: int
+    created_at: datetime
+    updated_at: datetime
 
 
 class NotificationResponse(BaseModel):
@@ -381,6 +445,8 @@ def document_response(item: EmployeeDocument) -> DocumentResponse:
         status=document_status(item),
         review_status=item.review_status,
         version=item.version,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
     )
 
 
@@ -391,6 +457,15 @@ async def task_response(session: AsyncSession, task: WorkTask) -> TaskResponse:
                 TaskAssignee.company_id == task.company_id, TaskAssignee.task_id == task.id
             )
         )
+    )
+    extension = await session.scalar(
+        select(TaskExtensionRequest)
+        .where(
+            TaskExtensionRequest.company_id == task.company_id,
+            TaskExtensionRequest.task_id == task.id,
+        )
+        .order_by(TaskExtensionRequest.created_at.desc())
+        .limit(1)
     )
     return TaskResponse(
         id=task.id,
@@ -403,6 +478,11 @@ async def task_response(session: AsyncSession, task: WorkTask) -> TaskResponse:
         assignee_ids=[item.membership_id for item in assignees],
         viewed_by_ids=[item.membership_id for item in assignees if item.viewed_at],
         completion_attachment_file_id=task.completion_attachment_file_id,
+        latest_extension=(
+            TaskExtensionResponse.model_validate(extension, from_attributes=True)
+            if extension
+            else None
+        ),
         version=task.version,
         created_at=task.created_at,
         updated_at=task.updated_at,
@@ -670,6 +750,44 @@ async def update_task_status(
             title="Task changed",
             detail="Reload the task before saving again.",
         )
+    if payload.status == "needs_more_time":
+        is_assignee = await session.scalar(
+            select(TaskAssignee.id).where(
+                TaskAssignee.company_id == context.company_id,
+                TaskAssignee.task_id == task.id,
+                TaskAssignee.membership_id == context.membership.id,
+            )
+        )
+        if is_assignee is None:
+            raise ProblemError(
+                status=403,
+                code="task_extension_assignee_required",
+                title="Task assignee required",
+                detail="Only an assigned employee can request more time.",
+            )
+        pending_extension = await session.scalar(
+            select(TaskExtensionRequest.id).where(
+                TaskExtensionRequest.company_id == context.company_id,
+                TaskExtensionRequest.task_id == task.id,
+                TaskExtensionRequest.status == "pending",
+            )
+        )
+        if pending_extension is not None:
+            raise ProblemError(
+                status=409,
+                code="task_extension_pending",
+                title="Task extension already pending",
+                detail="The manager must decide the current extension request first.",
+            )
+        session.add(
+            TaskExtensionRequest(
+                company_id=context.company_id,
+                task_id=task.id,
+                requested_by_membership_id=context.membership.id,
+                reason=payload.reason or "",
+                requested_due_at=payload.requested_due_at,
+            )
+        )
     old_status = task.status
     await require_owned_attachment(session, context, payload.completion_attachment_file_id)
     task.status = payload.status
@@ -697,6 +815,83 @@ async def update_task_status(
                 target_id=task.id,
             )
         )
+    await session.commit()
+    await session.refresh(task)
+    return await task_response(session, task)
+
+
+@tasks_router.post("/{task_id}/extension-decision", response_model=TaskResponse)
+async def decide_task_extension(
+    task_id: UUID,
+    payload: TaskExtensionDecisionRequest,
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> TaskResponse:
+    context = tenant_context(auth_session)
+    await require_permission(session, context, Permission.TASKS_MANAGE)
+    visible = await visible_membership_ids(session, context)
+    task = await can_access_task(
+        session, context.company_id, context.membership.id, task_id, True, visible
+    )
+    if task.version != payload.version:
+        raise ProblemError(
+            status=409,
+            code="concurrency_conflict",
+            title="Task changed",
+            detail="Reload the task before deciding the extension request.",
+        )
+    extension = await session.scalar(
+        select(TaskExtensionRequest)
+        .where(
+            TaskExtensionRequest.company_id == context.company_id,
+            TaskExtensionRequest.task_id == task.id,
+            TaskExtensionRequest.status == "pending",
+        )
+        .with_for_update()
+    )
+    if extension is None:
+        raise ProblemError(
+            status=409,
+            code="task_extension_not_pending",
+            title="No pending task extension",
+            detail="This task has no pending extension request.",
+        )
+    now = datetime.now(UTC)
+    old_status = task.status
+    extension.status = payload.decision
+    extension.decided_by_membership_id = context.membership.id
+    extension.decision_comment = payload.comment
+    extension.decided_at = now
+    extension.approved_due_at = payload.new_due_at if payload.decision == "approved" else None
+    if payload.decision == "approved":
+        task.due_at = payload.new_due_at
+    task.status = "in_progress"
+    task.version += 1
+    session.add(
+        TaskStatusHistory(
+            company_id=context.company_id,
+            task_id=task.id,
+            changed_by_membership_id=context.membership.id,
+            old_status=old_status,
+            new_status=task.status,
+            reason=f"Extension {payload.decision}: {payload.comment}",
+        )
+    )
+    session.add(
+        Notification(
+            company_id=context.company_id,
+            membership_id=extension.requested_by_membership_id,
+            kind=f"task_extension_{payload.decision}",
+            title=task.title,
+            body=(
+                "The task extension was approved."
+                if payload.decision == "approved"
+                else "The task extension was rejected."
+            ),
+            target_type="work_task",
+            target_id=task.id,
+        )
+    )
     await session.commit()
     await session.refresh(task)
     return await task_response(session, task)
@@ -1187,6 +1382,136 @@ async def list_documents(
         .order_by(EmployeeDocument.expires_on.asc().nullslast())
     )
     return [document_response(item) for item in items]
+
+
+@documents_router.get("/{document_id}", response_model=DocumentResponse)
+async def get_document(
+    document_id: UUID,
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> DocumentResponse:
+    context = tenant_context(auth_session)
+    item = await session.scalar(
+        select(EmployeeDocument).where(
+            EmployeeDocument.company_id == context.company_id,
+            EmployeeDocument.id == document_id,
+        )
+    )
+    if item is None:
+        raise ProblemError(
+            status=404,
+            code="document_not_found",
+            title="Document not found",
+            detail="The document was not found in this company.",
+        )
+    if item.membership_id != context.membership.id:
+        await require_permission(session, context, Permission.DOCUMENTS_VIEW)
+        await require_membership_scope(session, context, item.membership_id)
+    return document_response(item)
+
+
+@documents_router.patch("/{document_id}", response_model=DocumentResponse)
+async def update_document(
+    document_id: UUID,
+    payload: DocumentUpdateRequest,
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> DocumentResponse:
+    context = tenant_context(auth_session)
+    item = await session.scalar(
+        select(EmployeeDocument)
+        .where(
+            EmployeeDocument.company_id == context.company_id,
+            EmployeeDocument.id == document_id,
+        )
+        .with_for_update()
+    )
+    if item is None:
+        raise ProblemError(
+            status=404,
+            code="document_not_found",
+            title="Document not found",
+            detail="The document was not found in this company.",
+        )
+    if item.membership_id != context.membership.id:
+        await require_permission(session, context, Permission.DOCUMENTS_MANAGE)
+        await require_membership_scope(session, context, item.membership_id)
+    if item.version != payload.version:
+        raise ProblemError(
+            status=409,
+            code="concurrency_conflict",
+            title="Document changed",
+            detail="Reload the document before updating it.",
+        )
+    if payload.attachment_file_id != item.attachment_file_id:
+        await require_owned_attachment(session, context, payload.attachment_file_id)
+    values = payload.model_dump(exclude={"version"})
+    changed_fields = [key for key, value in values.items() if getattr(item, key) != value]
+    for key, value in values.items():
+        setattr(item, key, value)
+    if changed_fields:
+        item.review_status = "pending_review"
+    item.version += 1
+    session.add(
+        AuditLog(
+            company_id=context.company_id,
+            actor_membership_id=context.membership.id,
+            action="document.updated",
+            target_type="employee_document",
+            target_id=item.id,
+            details={"changed_fields": sorted(changed_fields)},
+        )
+    )
+    await session.commit()
+    await session.refresh(item)
+    return document_response(item)
+
+
+@documents_router.delete("/{document_id}", status_code=204)
+async def delete_document(
+    document_id: UUID,
+    version: Annotated[int, Query(ge=1)],
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> None:
+    context = tenant_context(auth_session)
+    item = await session.scalar(
+        select(EmployeeDocument)
+        .where(
+            EmployeeDocument.company_id == context.company_id,
+            EmployeeDocument.id == document_id,
+        )
+        .with_for_update()
+    )
+    if item is None:
+        raise ProblemError(
+            status=404,
+            code="document_not_found",
+            title="Document not found",
+            detail="The document was not found in this company.",
+        )
+    if item.membership_id != context.membership.id:
+        await require_permission(session, context, Permission.DOCUMENTS_MANAGE)
+        await require_membership_scope(session, context, item.membership_id)
+    if item.version != version:
+        raise ProblemError(
+            status=409,
+            code="concurrency_conflict",
+            title="Document changed",
+            detail="Reload the document before deleting it.",
+        )
+    session.add(
+        AuditLog(
+            company_id=context.company_id,
+            actor_membership_id=context.membership.id,
+            action="document.deleted",
+            target_type="employee_document",
+            target_id=item.id,
+            details={"document_type": item.document_type},
+        )
+    )
+    await session.delete(item)
+    await session.commit()
 
 
 @documents_router.post("/{document_id}/review", response_model=DocumentResponse)

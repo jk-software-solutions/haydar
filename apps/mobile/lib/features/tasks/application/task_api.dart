@@ -35,6 +35,7 @@ class TaskApi {
     WorkTask task,
     String status,
     String? reason,
+    DateTime? requestedDueAt,
   ) async {
     await dio.post<void>(
       '/tasks/${task.id}/status',
@@ -43,6 +44,27 @@ class TaskApi {
         'version': task.version,
         'status': status,
         if (reason != null && reason.isNotEmpty) 'reason': reason,
+        if (requestedDueAt != null)
+          'requested_due_at': requestedDueAt.toUtc().toIso8601String(),
+      },
+    );
+  }
+
+  Future<void> decideExtension(
+    AuthSession session,
+    WorkTask task, {
+    required String decision,
+    required String comment,
+    DateTime? newDueAt,
+  }) async {
+    await dio.post<void>(
+      '/tasks/${task.id}/extension-decision',
+      options: _auth(session),
+      data: <String, dynamic>{
+        'version': task.version,
+        'decision': decision,
+        'comment': comment,
+        if (newDueAt != null) 'new_due_at': newDueAt.toUtc().toIso8601String(),
       },
     );
   }
@@ -101,6 +123,7 @@ class WorkTask {
     required this.status,
     required this.dueAt,
     required this.version,
+    required this.latestExtension,
   });
   factory WorkTask.fromJson(Map<String, dynamic> json) => WorkTask(
     id: json['id'] as String? ?? '',
@@ -110,6 +133,11 @@ class WorkTask {
     status: json['status'] as String? ?? 'new',
     dueAt: DateTime.tryParse(json['due_at'] as String? ?? ''),
     version: json['version'] as int? ?? 1,
+    latestExtension: json['latest_extension'] is Map<String, dynamic>
+        ? TaskExtension.fromJson(
+            json['latest_extension'] as Map<String, dynamic>,
+          )
+        : null,
   );
   final String id;
   final String title;
@@ -118,4 +146,28 @@ class WorkTask {
   final String status;
   final DateTime? dueAt;
   final int version;
+  final TaskExtension? latestExtension;
+}
+
+class TaskExtension {
+  const TaskExtension({
+    required this.reason,
+    required this.requestedDueAt,
+    required this.status,
+    required this.decisionComment,
+  });
+
+  factory TaskExtension.fromJson(Map<String, dynamic> json) => TaskExtension(
+    reason: json['reason'] as String? ?? '',
+    requestedDueAt: DateTime.tryParse(
+      json['requested_due_at'] as String? ?? '',
+    ),
+    status: json['status'] as String? ?? '',
+    decisionComment: json['decision_comment'] as String?,
+  );
+
+  final String reason;
+  final DateTime? requestedDueAt;
+  final String status;
+  final String? decisionComment;
 }

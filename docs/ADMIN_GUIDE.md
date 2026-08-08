@@ -37,3 +37,14 @@ after scheduled end. Review `missing_checkout` and unauthorized early-departure 
 Review pending devices, manual attendance, platform support banners, role assignments, expired
 documents, and audit logs. Remove access when employment ends. Never send passwords, refresh
 tokens, signing keys, or exported employee data through unapproved channels.
+
+Employee phone login uses a strict international number such as `+966500000000`. Saving a unique
+phone in the employee editor marks it administrator-verified and enables that identifier with the
+employee's existing password; clearing it disables phone login. Deactivating a membership revokes
+its sessions and devices immediately. Reactivation requires a new login and does not restore device
+approval.
+
+Operational-group membership is managed from the group section and affects scoped tasks, Proof of
+Presence, reports and manager visibility. Branch details can be edited with optimistic versioning.
+QR controls distinguish creation from rotation: rotation invalidates all prior active tokens for the
+selected branch. Use explicit revoke if a displayed token may have been exposed.

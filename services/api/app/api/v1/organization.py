@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
@@ -17,9 +17,10 @@ from app.core.authorization import (
     visible_membership_ids,
 )
 from app.core.errors import ProblemError
+from app.core.phone import normalize_e164
 from app.db.session import get_session
-from app.models.devices import AuditLog
-from app.models.identity import Company, CompanyMembership, User
+from app.models.devices import AuditLog, Device
+from app.models.identity import Company, CompanyMembership, RefreshSession, User
 from app.models.organization import Department, EmployeeProfile
 
 companies_router = APIRouter()
@@ -78,8 +79,10 @@ class EmployeeResponse(BaseModel):
     email: str
     role_code: str
     membership_status: str
+    membership_version: int
     employee_number: str | None
     phone: str | None
+    phone_login_enabled: bool
     job_title: str | None
     employment_type: str
     hire_date: date | None
@@ -116,13 +119,20 @@ class UpdateEmployeeRequest(BaseModel):
     def strip_display_name(cls, value: str | None) -> str | None:
         return value.strip() if value is not None else None
 
-    @field_validator("employee_number", "phone", "job_title")
+    @field_validator("employee_number", "job_title")
     @classmethod
     def normalize_optional_text(cls, value: str | None) -> str | None:
         if value is None:
             return None
         stripped = value.strip()
         return stripped or None
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_phone(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        return normalize_e164(value)
 
     @model_validator(mode="after")
     def reject_explicit_nulls(self) -> Self:
@@ -135,6 +145,14 @@ class UpdateEmployeeRequest(BaseModel):
             if field_name in self.model_fields_set and getattr(self, field_name) is None:
                 raise ValueError(f"{field_name} cannot be null")
         return self
+
+
+class UpdateEmployeeStatusRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
+    status: Literal["active", "inactive"]
+    reason: str = Field(min_length=3, max_length=1000)
 
 
 def company_response(company: Company) -> CompanySettingsResponse:
@@ -163,8 +181,12 @@ def employee_response(
         email=user.email,
         role_code=membership.role_code,
         membership_status=membership.status,
+        membership_version=membership.version,
         employee_number=profile.employee_number,
         phone=profile.phone,
+        phone_login_enabled=(
+            user.phone_e164 == profile.phone and user.phone_verified_at is not None
+        ),
         job_title=profile.job_title,
         employment_type=profile.employment_type,
         hire_date=profile.hire_date,
@@ -390,6 +412,48 @@ async def update_employee(
                 title="Department is invalid",
                 detail="The department must belong to the current company.",
             )
+    if "phone" in changes:
+        membership = await session.scalar(
+            select(CompanyMembership).where(
+                CompanyMembership.company_id == context.company_id,
+                CompanyMembership.id == membership_id,
+            )
+        )
+        if membership is None:
+            raise ProblemError(
+                status=404,
+                code="employee_not_found",
+                title="Employee profile not found",
+                detail="The employee profile does not exist in the current company.",
+            )
+        user = await session.scalar(
+            select(User).where(User.id == membership.user_id).with_for_update()
+        )
+        if user is None:
+            raise ProblemError(
+                status=404,
+                code="employee_not_found",
+                title="Employee profile not found",
+                detail="The employee profile does not exist in the current company.",
+            )
+        phone = changes["phone"]
+        if isinstance(phone, str):
+            await session.execute(
+                select(func.pg_advisory_xact_lock(func.hashtextextended(f"phone:{phone}", 0)))
+            )
+            existing_user = await session.scalar(
+                select(User.id).where(User.phone_e164 == phone, User.id != user.id)
+            )
+            if existing_user is not None:
+                raise ProblemError(
+                    status=409,
+                    code="phone_already_registered",
+                    title="Phone already registered",
+                    detail="This phone number is already assigned to another account.",
+                )
+        user.phone_e164 = phone if isinstance(phone, str) else None
+        user.phone_verified_at = datetime.now(UTC) if isinstance(phone, str) else None
+        user.version += 1
     for field_name, value in changes.items():
         setattr(profile, field_name, value)
     profile.version += 1
@@ -401,6 +465,94 @@ async def update_employee(
             target_type="employee_profile",
             target_id=profile.id,
             details={"changed_fields": sorted(changes)},
+        )
+    )
+    await session.commit()
+    row = (
+        await session.execute(
+            employee_statement(context.company_id).where(
+                EmployeeProfile.membership_id == membership_id
+            )
+        )
+    ).one()
+    return employee_response(*row)
+
+
+@employees_router.post("/{membership_id}/status", response_model=EmployeeResponse)
+async def update_employee_status(
+    membership_id: UUID,
+    payload: UpdateEmployeeStatusRequest,
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> EmployeeResponse:
+    context = tenant_context(auth_session)
+    await require_permission(session, context, Permission.MEMBERS_MANAGE)
+    await require_membership_scope(session, context, membership_id)
+    membership = await session.scalar(
+        select(CompanyMembership)
+        .where(
+            CompanyMembership.company_id == context.company_id,
+            CompanyMembership.id == membership_id,
+        )
+        .with_for_update()
+    )
+    if membership is None:
+        raise ProblemError(
+            status=404,
+            code="employee_not_found",
+            title="Employee profile not found",
+            detail="The employee profile does not exist in the current company.",
+        )
+    if membership.id == context.membership.id or membership.role_code == "OWNER":
+        raise ProblemError(
+            status=409,
+            code="protected_membership",
+            title="Membership is protected",
+            detail="An owner cannot deactivate their own or another owner membership here.",
+        )
+    if membership.version != payload.version:
+        raise ProblemError(
+            status=409,
+            code="concurrency_conflict",
+            title="Membership changed",
+            detail="Reload the employee before changing membership status.",
+        )
+    previous_status = membership.status
+    membership.status = payload.status
+    membership.version += 1
+    now = datetime.now(UTC)
+    if payload.status == "inactive":
+        refresh_sessions = await session.scalars(
+            select(RefreshSession).where(
+                RefreshSession.company_id == context.company_id,
+                RefreshSession.membership_id == membership.id,
+                RefreshSession.revoked_at.is_(None),
+            )
+        )
+        for item in refresh_sessions:
+            item.revoked_at = now
+        devices = await session.scalars(
+            select(Device).where(
+                Device.company_id == context.company_id,
+                Device.membership_id == membership.id,
+                Device.status.in_(("approved", "pending")),
+            )
+        )
+        for device in devices:
+            device.status = "revoked"
+            device.revoked_at = now
+    session.add(
+        AuditLog(
+            company_id=context.company_id,
+            actor_membership_id=context.membership.id,
+            action="employee.membership_status_updated",
+            target_type="company_membership",
+            target_id=membership.id,
+            details={
+                "before": previous_status,
+                "after": membership.status,
+                "reason": payload.reason,
+            },
         )
     )
     await session.commit()

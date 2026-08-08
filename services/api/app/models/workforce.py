@@ -13,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -131,6 +132,48 @@ class TaskStatusHistory(Base):
     old_status: Mapped[str | None] = mapped_column(String(32))
     new_status: Mapped[str] = mapped_column(String(32), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class TaskExtensionRequest(Base):
+    __tablename__ = "task_extension_requests"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "task_id"],
+            ["work_tasks.company_id", "work_tasks.id"],
+            name="fk_task_extension_requests_company_task",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "requested_by_membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_task_extension_requests_company_requester",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "decided_by_membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_task_extension_requests_company_decider",
+        ),
+        Index("ix_task_extension_requests_task_created", "task_id", "created_at"),
+        Index(
+            "uq_task_extension_requests_pending",
+            "company_id",
+            "task_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    task_id: Mapped[UUID] = mapped_column(nullable=False)
+    requested_by_membership_id: Mapped[UUID] = mapped_column(nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    requested_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
+    decided_by_membership_id: Mapped[UUID | None]
+    decision_comment: Mapped[str | None] = mapped_column(Text)
+    approved_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 

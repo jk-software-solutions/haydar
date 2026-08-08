@@ -6,7 +6,7 @@
   tasks, requests, leave, document upload, and manager workspaces.
 - Next.js company and platform portals with operations, reports/exports, subscription information,
   coupons, support mode, and platform controls.
-- FastAPI/PostgreSQL multi-tenant backend through Alembic head `20260808_0012`, protected files,
+- FastAPI/PostgreSQL multi-tenant backend through Alembic head `20260808_0022`, protected files,
   audit/security middleware, reporting, subscription limits, and scheduled maintenance.
 - Nginx, systemd, environment, backup/restore, signing, and release-build templates.
 - Administrator, platform owner, database, Play, privacy, support, limitations, and roadmap guides.

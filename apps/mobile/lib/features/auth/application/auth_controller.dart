@@ -77,12 +77,15 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<AuthSession> signIn({
-    required String email,
+    required String identifier,
     required String password,
   }) async {
     state = state.copyWith(isSubmitting: true, clearError: true);
     try {
-      final session = await _api!.login(email: email, password: password);
+      final session = await _api!.login(
+        identifier: identifier,
+        password: password,
+      );
       state = AuthState.authenticated(session);
       return session;
     } on Object catch (error) {

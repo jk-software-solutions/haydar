@@ -5,13 +5,16 @@ import { canEnterCompanyPortal, type PortalRole } from "@/lib/auth/permissions";
 
 import { archiveBranchAction, archiveShiftAction, logoutAction } from "./actions";
 import { BranchForm } from "./branch-form";
+import { BranchEditForm, type EditableBranch } from "./branch-edit-form";
 import { CompanySettingsForm, type CompanySettings } from "./company-settings-form";
 import { EmployeeForm, type EditableEmployee } from "./employee-form";
 import { InvitationForm } from "./invitation-form";
+import { GroupManagement, type EditableGroup } from "./group-management";
 import { MemberAccessForm, type MemberAccess } from "./member-access-form";
 import {
   markAllNotificationsReadAction,
   reviewGeofenceExitAction,
+  updateNotificationPreferencesAction,
 } from "./operations-actions";
 import { OperationsDashboard } from "./operations-dashboard";
 import { ShiftForm } from "./shift-form";
@@ -24,18 +27,7 @@ type Invitation = {
   status: string;
 };
 
-type Branch = {
-  id: string;
-  code: string;
-  name: string;
-  full_address: string;
-  saudi_short_address: string | null;
-  latitude: string;
-  longitude: string;
-  geofence_radius_m: number;
-  timezone: string;
-  version: number;
-};
+type Branch = EditableBranch;
 
 type Shift = {
   id: string;
@@ -75,6 +67,14 @@ type Notification = {
   read_at: string | null;
   created_at: string;
 };
+type NotificationPreferences = {
+  in_app_enabled: boolean;
+  push_enabled: boolean;
+  email_enabled: boolean;
+  muted_kinds: string[];
+  quiet_hours_start: string | null;
+  quiet_hours_end: string | null;
+};
 
 export default async function CompanyPortal({
   params,
@@ -94,6 +94,7 @@ export default async function CompanyPortal({
   );
   const canEditEmployees = canManage;
   const canManageSettings = session.roles.includes("OWNER");
+  const canManageGroups = session.permissions.includes("departments:manage");
   const canReviewGeofence = session.permissions.includes("geofence_exits:manage");
   const [
     invitationResponse,
@@ -107,6 +108,7 @@ export default async function CompanyPortal({
     accessResponse,
     geofenceResponse,
     notificationsResponse,
+    notificationPreferencesResponse,
   ] = await Promise.all([
     canManage ? authorizedApiFetch("/invitations") : Promise.resolve(null),
     authorizedApiFetch("/employees?page_size=100"),
@@ -114,13 +116,16 @@ export default async function CompanyPortal({
     authorizedApiFetch("/branches?page_size=100"),
     authorizedApiFetch("/shifts?page_size=100"),
     canManageSettings ? authorizedApiFetch("/departments") : Promise.resolve(null),
-    canManageSettings ? authorizedApiFetch("/groups?page_size=100") : Promise.resolve(null),
+    canManageSettings || canManageGroups
+      ? authorizedApiFetch("/groups?page_size=100&include_inactive=true")
+      : Promise.resolve(null),
     canManageSettings ? authorizedApiFetch("/members/access-catalog") : Promise.resolve(null),
     canManageSettings ? authorizedApiFetch("/members/access") : Promise.resolve(null),
     canReviewGeofence
       ? authorizedApiFetch("/geofence-exit-events")
       : Promise.resolve(null),
     authorizedApiFetch("/notifications"),
+    authorizedApiFetch("/notifications/preferences"),
   ]);
   const invitationPayload: { items: Invitation[] } = invitationResponse?.ok
     ? ((await invitationResponse.json()) as { items: Invitation[] })
@@ -140,8 +145,8 @@ export default async function CompanyPortal({
   const departmentPayload: { items: NamedOption[] } = departmentResponse?.ok
     ? ((await departmentResponse.json()) as { items: NamedOption[] })
     : { items: [] };
-  const groupPayload: { items: NamedOption[] } = groupResponse?.ok
-    ? ((await groupResponse.json()) as { items: NamedOption[] })
+  const groupPayload: { items: EditableGroup[] } = groupResponse?.ok
+    ? ((await groupResponse.json()) as { items: EditableGroup[] })
     : { items: [] };
   const permissions: PermissionItem[] = permissionResponse?.ok
     ? ((await permissionResponse.json()) as PermissionItem[])
@@ -155,6 +160,16 @@ export default async function CompanyPortal({
   const notifications: Notification[] = notificationsResponse.ok
     ? ((await notificationsResponse.json()) as Notification[])
     : [];
+  const notificationPreferences: NotificationPreferences = notificationPreferencesResponse.ok
+    ? ((await notificationPreferencesResponse.json()) as NotificationPreferences)
+    : {
+        in_app_enabled: true,
+        push_enabled: true,
+        email_enabled: false,
+        muted_kinds: [],
+        quiet_hours_start: null,
+        quiet_hours_end: null,
+      };
   const accessByMember = new Map(accessItems.map((item) => [item.membership_id, item]));
   const signOut = logoutAction.bind(null, lang);
 
@@ -220,6 +235,7 @@ export default async function CompanyPortal({
                   <li key={branch.id}>
                     <div><strong>{branch.name}</strong><span>{branch.code} · {branch.saudi_short_address || branch.full_address}</span></div>
                     <span>{branch.latitude}, {branch.longitude} · {branch.geofence_radius_m}m</span>
+                    {canEditEmployees && <BranchEditForm locale={lang} branch={branch} />}
                     {canEditEmployees && <form action={archive}><button className="danger-button" type="submit">{ar ? "أرشفة" : "Archive"}</button></form>}
                   </li>
                 );
@@ -248,6 +264,13 @@ export default async function CompanyPortal({
             </ul>
           )}
         </section>
+        {canManageGroups && (
+          <GroupManagement
+            locale={lang}
+            groups={groupPayload.items}
+            employees={employeePayload.items}
+          />
+        )}
         <OperationsDashboard
           locale={lang}
           canManage={canManage}
@@ -267,6 +290,18 @@ export default async function CompanyPortal({
               </form>
             )}
           </div>
+          <details className="operation-form-card">
+            <summary>{ar ? "تفضيلات الإشعارات" : "Notification preferences"}</summary>
+            <form action={updateNotificationPreferencesAction.bind(null, lang)} className="portal-form operation-form">
+              <label className="checkbox-field"><input type="checkbox" name="in_app_enabled" defaultChecked={notificationPreferences.in_app_enabled} />{ar ? "داخل التطبيق" : "In-app"}</label>
+              <label className="checkbox-field"><input type="checkbox" name="push_enabled" defaultChecked={notificationPreferences.push_enabled} />{ar ? "إشعارات فورية" : "Push"}</label>
+              <label className="checkbox-field"><input type="checkbox" name="email_enabled" defaultChecked={notificationPreferences.email_enabled} />{ar ? "بريد إلكتروني" : "Email"}</label>
+              <input name="muted_kinds" defaultValue={notificationPreferences.muted_kinds.join(", ")} placeholder={ar ? "أنواع مكتومة مفصولة بفاصلة" : "Muted kinds, comma-separated"} />
+              <input name="quiet_hours_start" type="time" defaultValue={notificationPreferences.quiet_hours_start ?? ""} />
+              <input name="quiet_hours_end" type="time" defaultValue={notificationPreferences.quiet_hours_end ?? ""} />
+              <button type="submit">{ar ? "حفظ التفضيلات" : "Save preferences"}</button>
+            </form>
+          </details>
           {notifications.length === 0 ? (
             <p>{ar ? "لا توجد إشعارات بعد." : "No notifications yet."}</p>
           ) : (

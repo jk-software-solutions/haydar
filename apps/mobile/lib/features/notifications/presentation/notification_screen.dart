@@ -21,6 +21,7 @@ class NotificationScreen extends ConsumerStatefulWidget {
 
 class _NotificationScreenState extends ConsumerState<NotificationScreen> {
   List<AppNotification> _items = <AppNotification>[];
+  NotificationPreferences? _preferences;
   bool _loading = true;
   String? _error;
   bool get _ar => Localizations.localeOf(context).languageCode == 'ar';
@@ -36,8 +37,14 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
       final items = await ref
           .read(notificationApiProvider)
           .list(widget.session);
+      final preferences = await ref
+          .read(notificationApiProvider)
+          .preferences(widget.session);
       if (mounted) {
-        setState(() => _items = items);
+        setState(() {
+          _items = items;
+          _preferences = preferences;
+        });
       }
     } on DioException catch (error) {
       if (mounted) {
@@ -64,12 +71,126 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
     await _refresh();
   }
 
+  Future<void> _editPreferences() async {
+    final current = _preferences;
+    if (current == null) return;
+    var inApp = current.inAppEnabled;
+    var push = current.pushEnabled;
+    var email = current.emailEnabled;
+    final mutedController = TextEditingController(
+      text: current.mutedKinds.join(', '),
+    );
+    final startController = TextEditingController(
+      text: current.quietHoursStart ?? '',
+    );
+    final endController = TextEditingController(
+      text: current.quietHoursEnd ?? '',
+    );
+    final updated = await showDialog<NotificationPreferences>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(_ar ? 'تفضيلات الإشعارات' : 'Notification preferences'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                SwitchListTile(
+                  value: inApp,
+                  onChanged: (value) => setDialogState(() => inApp = value),
+                  title: Text(_ar ? 'داخل التطبيق' : 'In-app notifications'),
+                ),
+                SwitchListTile(
+                  value: push,
+                  onChanged: (value) => setDialogState(() => push = value),
+                  title: Text(_ar ? 'الإشعارات الفورية' : 'Push notifications'),
+                ),
+                SwitchListTile(
+                  value: email,
+                  onChanged: (value) => setDialogState(() => email = value),
+                  title: Text(
+                    _ar ? 'البريد الإلكتروني' : 'Email notifications',
+                  ),
+                ),
+                TextField(
+                  controller: mutedController,
+                  decoration: InputDecoration(
+                    labelText: _ar
+                        ? 'أنواع مكتومة، مفصولة بفاصلة'
+                        : 'Muted kinds, comma-separated',
+                  ),
+                ),
+                TextField(
+                  controller: startController,
+                  decoration: InputDecoration(
+                    labelText: _ar ? 'بداية الهدوء HH:MM' : 'Quiet start HH:MM',
+                  ),
+                ),
+                TextField(
+                  controller: endController,
+                  decoration: InputDecoration(
+                    labelText: _ar ? 'نهاية الهدوء HH:MM' : 'Quiet end HH:MM',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(_ar ? 'إلغاء' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                context,
+                NotificationPreferences(
+                  inAppEnabled: inApp,
+                  pushEnabled: push,
+                  emailEnabled: email,
+                  mutedKinds: mutedController.text
+                      .split(',')
+                      .map((value) => value.trim())
+                      .where((value) => value.isNotEmpty)
+                      .toList(growable: false),
+                  quietHoursStart: startController.text.trim().isEmpty
+                      ? null
+                      : startController.text.trim(),
+                  quietHoursEnd: endController.text.trim().isEmpty
+                      ? null
+                      : endController.text.trim(),
+                ),
+              ),
+              child: Text(_ar ? 'حفظ' : 'Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    mutedController.dispose();
+    startController.dispose();
+    endController.dispose();
+    if (updated == null) return;
+    try {
+      final saved = await ref
+          .read(notificationApiProvider)
+          .updatePreferences(widget.session, updated);
+      if (mounted) setState(() => _preferences = saved);
+    } on Object catch (error) {
+      if (mounted) setState(() => _error = '$error');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(_ar ? 'الإشعارات' : 'Notifications'),
         actions: <Widget>[
+          IconButton(
+            onPressed: _preferences == null ? null : _editPreferences,
+            tooltip: _ar ? 'التفضيلات' : 'Preferences',
+            icon: const Icon(Icons.tune_rounded),
+          ),
           TextButton(
             onPressed: _items.any((item) => item.readAt == null)
                 ? _readAll

@@ -7,10 +7,13 @@ import {
   createPresenceRequestAction,
   createReportExportAction,
   createTaskAction,
+  deleteDocumentAction,
+  decideTaskExtensionAction,
   reviewDocumentAction,
   reviewLeaveAction,
   reviewPermissionAction,
   setLeaveBalanceAction,
+  updateDocumentAction,
   updateTaskStatusAction,
 } from "./operations-actions";
 import { QrTokenForm } from "./qr-token-form";
@@ -51,6 +54,12 @@ type Task = {
   due_at: string | null;
   assignee_ids: string[];
   version: number;
+  latest_extension: {
+    reason: string;
+    requested_due_at: string | null;
+    status: string;
+    decision_comment: string | null;
+  } | null;
 };
 type PermissionRequest = {
   id: string;
@@ -75,11 +84,15 @@ type Document = {
   id: string;
   membership_id: string;
   document_type: string;
+  custom_type_name: string | null;
   document_number: string | null;
+  issued_on: string | null;
   expires_on: string | null;
   status: string;
   review_status: string;
   attachment_file_id: string;
+  reminder_days: number;
+  version: number;
 };
 type ExportJob = {
   id: string;
@@ -230,7 +243,36 @@ export async function OperationsDashboard({
         <div className="kanban-grid">
           {tasks.map((task) => {
             const statusAction = updateTaskStatusAction.bind(null, locale, task.id, task.version);
-            return <article className="task-card" key={task.id}><div className="section-heading"><strong>{task.title}</strong><span className={`status-pill ${task.priority === "urgent" ? "urgent" : ""}`}>{task.priority}</span></div><p>{task.status} · {formatDate(task.due_at, locale)}</p><small>{task.assignee_ids.map((id) => employeeName(employees, id)).join(", ")}</small><form action={statusAction} className="inline-action"><select name="status" defaultValue={task.status}><option value="viewed">Viewed</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="needs_more_time">Needs more time</option><option value="blocked">Blocked</option><option value="postponed">Postponed</option></select><input name="reason" placeholder={ar ? "السبب عند الحاجة" : "Reason when required"} /><button type="submit">{ar ? "تحديث" : "Update"}</button></form></article>;
+            return (
+              <article className="task-card" key={task.id}>
+                <div className="section-heading"><strong>{task.title}</strong><span className={`status-pill ${task.priority === "urgent" ? "urgent" : ""}`}>{task.priority}</span></div>
+                <p>{task.status} · {formatDate(task.due_at, locale)}</p>
+                <small>{task.assignee_ids.map((id) => employeeName(employees, id)).join(", ")}</small>
+                <form action={statusAction} className="inline-action">
+                  <select name="status" defaultValue={task.status}><option value="viewed">Viewed</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="needs_more_time">Needs more time</option><option value="blocked">Blocked</option><option value="postponed">Postponed</option></select>
+                  <input name="reason" placeholder={ar ? "السبب عند الحاجة" : "Reason when required"} />
+                  <input name="requested_due_at" type="datetime-local" aria-label={ar ? "الموعد المطلوب للتمديد" : "Requested extension due date"} />
+                  <button type="submit">{ar ? "تحديث" : "Update"}</button>
+                </form>
+                {canManage && task.latest_extension?.status === "pending" && (
+                  <aside className="operation-form-card">
+                    <strong>{ar ? "طلب وقت إضافي" : "Extension request"}</strong>
+                    <p>{task.latest_extension.reason} · {formatDate(task.latest_extension.requested_due_at, locale)}</p>
+                    <div className="button-row">
+                      <form action={decideTaskExtensionAction.bind(null, locale, task.id, task.version, "approved")} className="inline-action">
+                        <input name="new_due_at" type="datetime-local" required />
+                        <input name="comment" required minLength={2} placeholder={ar ? "تعليق الموافقة" : "Approval comment"} />
+                        <button type="submit">{ar ? "الموافقة والتمديد" : "Approve extension"}</button>
+                      </form>
+                      <form action={decideTaskExtensionAction.bind(null, locale, task.id, task.version, "rejected")} className="inline-action">
+                        <input name="comment" required minLength={2} placeholder={ar ? "سبب الرفض" : "Rejection reason"} />
+                        <button type="submit" className="danger-button">{ar ? "رفض التمديد" : "Reject extension"}</button>
+                      </form>
+                    </div>
+                  </aside>
+                )}
+              </article>
+            );
           })}
           {tasks.length === 0 && <p className="empty-state">{ar ? "لا توجد مهام." : "No tasks."}</p>}
         </div>
@@ -268,7 +310,36 @@ export async function OperationsDashboard({
           <select name="document_type"><option value="residency">Residency</option><option value="passport">Passport</option><option value="medical_insurance">Medical insurance</option><option value="employment_contract">Employment contract</option><option value="driving_license">Driving license</option><option value="vehicle_insurance">Vehicle insurance</option><option value="custom">Custom</option></select>
           <input name="document_number" placeholder={ar ? "رقم الوثيقة" : "Document number"} /><input name="issued_on" type="date" /><input name="expires_on" type="date" /><input name="attachment_file_id" required placeholder={ar ? "معرف الملف المرفوع" : "Uploaded file ID"} /><input name="reminder_days" type="number" defaultValue="30" min="0" max="365" /><button type="submit">{ar ? "حفظ الوثيقة" : "Save document"}</button>
         </form>
-        <ul className="operation-list">{documents.map((item) => <li key={item.id}><div><strong>{employeeName(employees, item.membership_id)} · {item.document_type}</strong><span>{item.document_number || "—"} · {item.expires_on || "—"}</span><span className="status-pill">{item.status}</span><a className="language-link" href={`/api/files/${item.attachment_file_id}`}>{ar ? "تنزيل الملف" : "Download file"}</a></div>{canManage && item.review_status === "pending_review" && <div className="button-row"><form action={reviewDocumentAction.bind(null, locale, item.id, "valid")}><button type="submit">{ar ? "اعتماد" : "Validate"}</button></form><form action={reviewDocumentAction.bind(null, locale, item.id, "rejected")}><button type="submit" className="danger-button">{ar ? "رفض" : "Reject"}</button></form></div>}</li>)}</ul>
+        <ul className="operation-list">
+          {documents.map((item) => (
+            <li key={item.id}>
+              <div>
+                <strong>{employeeName(employees, item.membership_id)} · {item.custom_type_name || item.document_type}</strong>
+                <span>{item.document_number || "—"} · {item.issued_on || "—"} → {item.expires_on || "—"}</span>
+                <span className="status-pill">{item.status} · {item.review_status}</span>
+                <a className="language-link" href={`/api/files/${item.attachment_file_id}`}>{ar ? "تنزيل الملف" : "Download file"}</a>
+                <details>
+                  <summary>{ar ? "تفاصيل وتعديل الوثيقة" : "Document details and edit"}</summary>
+                  <form action={updateDocumentAction.bind(null, locale, item.id)} className="portal-form operation-form">
+                    <input type="hidden" name="version" value={item.version} />
+                    <select name="document_type" defaultValue={item.document_type}><option value="residency">Residency</option><option value="passport">Passport</option><option value="medical_insurance">Medical insurance</option><option value="employment_contract">Employment contract</option><option value="driving_license">Driving license</option><option value="vehicle_insurance">Vehicle insurance</option><option value="custom">Custom</option></select>
+                    <input name="custom_type_name" defaultValue={item.custom_type_name ?? ""} placeholder={ar ? "اسم النوع المخصص" : "Custom type name"} />
+                    <input name="document_number" defaultValue={item.document_number ?? ""} placeholder={ar ? "رقم الوثيقة" : "Document number"} />
+                    <input name="issued_on" type="date" defaultValue={item.issued_on ?? ""} />
+                    <input name="expires_on" type="date" defaultValue={item.expires_on ?? ""} />
+                    <input name="attachment_file_id" defaultValue={item.attachment_file_id} required />
+                    <input name="reminder_days" type="number" min="0" max="365" defaultValue={item.reminder_days} />
+                    <button type="submit">{ar ? "حفظ التعديل" : "Save changes"}</button>
+                  </form>
+                </details>
+              </div>
+              <div className="button-row">
+                {canManage && item.review_status === "pending_review" && <><form action={reviewDocumentAction.bind(null, locale, item.id, "valid")}><button type="submit">{ar ? "اعتماد" : "Validate"}</button></form><form action={reviewDocumentAction.bind(null, locale, item.id, "rejected")}><button type="submit" className="danger-button">{ar ? "رفض" : "Reject"}</button></form></>}
+                <form action={deleteDocumentAction.bind(null, locale, item.id, item.version)}><button type="submit" className="danger-button">{ar ? "حذف" : "Delete"}</button></form>
+              </div>
+            </li>
+          ))}
+        </ul>
       </section>
 
       {canManage && <section className="portal-section split-sections"><div><h2>{ar ? "التقارير والتصدير" : "Reports and exports"}</h2><form action={exportAction} className="portal-form operation-form"><select name="report_type"><option value="attendance">Attendance</option><option value="geofence_exits">Unauthorized exits</option><option value="leave">Leave</option><option value="permissions">Permissions</option><option value="tasks">Tasks</option><option value="documents">Documents</option><option value="branches">Branches</option><option value="shifts">Shifts</option></select><select name="export_format"><option value="pdf">PDF</option><option value="xlsx">Excel/XLSX</option></select><input name="date_from" type="date" /><input name="date_to" type="date" /><button type="submit">{ar ? "إنشاء التصدير" : "Create export"}</button></form><ul className="operation-list">{exports.map((job) => <li key={job.id}><div><strong>{job.report_type} · {job.export_format.toUpperCase()}</strong><span>{job.status} · {job.progress_percent}%</span></div>{job.status === "completed" && <a className="language-link" href={`/api/exports/${job.id}`}>{ar ? "تنزيل" : "Download"}</a>}</li>)}</ul></div><div><h2>{ar ? "الاشتراك" : "Subscription"}</h2>{subscription ? <article className="subscription-card"><span className="status-pill">{subscription.status}</span><h3>{subscription.plan.name}</h3><p>{subscription.plan.code} · {subscription.billing_cycle}</p><p>{ar ? "ينتهي" : "Ends"}: {formatDate(subscription.ends_at, locale)}</p><pre>{JSON.stringify(subscription.plan.limits, null, 2)}</pre></article> : <p className="empty-state">{ar ? "لا يوجد اشتراك فعال." : "No active subscription."}</p>}</div></section>}

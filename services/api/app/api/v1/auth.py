@@ -7,7 +7,7 @@ from uuid import UUID
 
 import jwt
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, status
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -20,6 +20,7 @@ from app.core.authorization import (
 )
 from app.core.config import get_settings
 from app.core.errors import ProblemError
+from app.core.phone import normalize_e164
 from app.core.security import (
     create_access_token,
     decode_access_token,
@@ -58,13 +59,18 @@ class RegisterCompanyRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: str = Field(min_length=5, max_length=320)
+    identifier: str = Field(
+        min_length=5,
+        max_length=320,
+        validation_alias=AliasChoices("identifier", "email"),
+    )
     password: str = Field(min_length=8, max_length=128)
 
-    @field_validator("email")
+    @field_validator("identifier")
     @classmethod
-    def normalize_email(cls, value: str) -> str:
-        return value.strip().lower()
+    def normalize_identifier(cls, value: str) -> str:
+        candidate = value.strip()
+        return normalize_e164(candidate) if candidate.startswith("+") else candidate.lower()
 
 
 class RefreshRequest(BaseModel):
@@ -352,7 +358,15 @@ async def login(
     payload: LoginRequest,
     session: DatabaseSession,
 ) -> AuthTokenResponse:
-    user = await session.scalar(select(User).where(User.email == payload.email))
+    if payload.identifier.startswith("+"):
+        user = await session.scalar(
+            select(User).where(
+                User.phone_e164 == payload.identifier,
+                User.phone_verified_at.is_not(None),
+            )
+        )
+    else:
+        user = await session.scalar(select(User).where(User.email == payload.identifier))
     if (
         user is None
         or not user.is_active
@@ -362,7 +376,7 @@ async def login(
             status=status.HTTP_401_UNAUTHORIZED,
             code="invalid_credentials",
             title="Invalid credentials",
-            detail="The email or password is incorrect.",
+            detail="The email, phone, or password is incorrect.",
         )
 
     membership = await active_membership_for_user(session, user.id)

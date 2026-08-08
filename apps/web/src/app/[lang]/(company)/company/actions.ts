@@ -96,6 +96,33 @@ export async function updateEmployeeAction(
   return { message: locale === "ar" ? "تم حفظ ملف الموظف." : "Employee profile saved.", success: true };
 }
 
+export async function updateEmployeeStatusAction(
+  locale: string,
+  membershipId: string,
+  _state: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await getWebSession();
+  if (!session?.permissions.includes("members:manage")) {
+    return { message: locale === "ar" ? "ليس لديك صلاحية." : "Permission denied." };
+  }
+  const response = await authorizedApiFetch(`/employees/${membershipId}/status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      version: Number(formData.get("membership_version")),
+      status: String(formData.get("membership_status")),
+      reason: String(formData.get("status_reason") ?? "").trim(),
+    }),
+  });
+  if (!response.ok) {
+    const problem = await response.json().catch(() => ({})) as { detail?: string };
+    return { message: problem.detail ?? (locale === "ar" ? "تعذر تغيير حالة العضوية." : "Membership status update failed.") };
+  }
+  revalidatePath(`/${locale}/company`);
+  return { message: locale === "ar" ? "تم تحديث حالة العضوية وإبطال الجلسات عند الحاجة." : "Membership status updated and sessions revoked when required.", success: true };
+}
+
 export async function updateCompanySettingsAction(
   locale: string,
   _state: OrganizationActionState,
@@ -174,6 +201,42 @@ export async function archiveBranchAction(
   }
   await authorizedApiFetch(`/branches/${branchId}?version=${version}`, { method: "DELETE" });
   revalidatePath(`/${locale}/company`);
+}
+
+export async function updateBranchAction(
+  locale: string,
+  branchId: string,
+  _state: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await getWebSession();
+  if (!session?.permissions.includes("branches:manage")) {
+    return { message: locale === "ar" ? "ليس لديك صلاحية." : "Permission denied." };
+  }
+  const parsed = branchSchema.safeParse({
+    code: formData.get("code"),
+    name: formData.get("name"),
+    saudi_short_address: formData.get("saudi_short_address"),
+    full_address: formData.get("full_address"),
+    latitude: formData.get("latitude"),
+    longitude: formData.get("longitude"),
+    geofence_radius_m: formData.get("geofence_radius_m"),
+    timezone: formData.get("timezone"),
+  });
+  if (!parsed.success) {
+    return { message: "", errors: parsed.error.flatten().fieldErrors };
+  }
+  const response = await authorizedApiFetch(`/branches/${branchId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...parsed.data, version: Number(formData.get("version")) }),
+  });
+  if (!response.ok) {
+    const problem = await response.json().catch(() => ({})) as { detail?: string };
+    return { message: problem.detail ?? (locale === "ar" ? "تعذر تحديث الفرع." : "Branch update failed.") };
+  }
+  revalidatePath(`/${locale}/company`);
+  return { message: locale === "ar" ? "تم تحديث الفرع." : "Branch updated.", success: true };
 }
 
 export async function createShiftAction(

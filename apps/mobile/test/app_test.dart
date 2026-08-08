@@ -69,7 +69,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('تسجيل الدخول'), findsWidgets);
-    expect(find.text('البريد الإلكتروني'), findsOneWidget);
+    expect(find.text('البريد الإلكتروني أو الهاتف'), findsOneWidget);
     expect(find.text('كلمة المرور'), findsOneWidget);
 
     await tester.tap(find.text('لدي رمز دعوة'));

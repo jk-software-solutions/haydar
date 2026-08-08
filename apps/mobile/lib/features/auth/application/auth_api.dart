@@ -18,12 +18,12 @@ class AuthApi {
   final Ref ref;
 
   Future<AuthSession> login({
-    required String email,
+    required String identifier,
     required String password,
   }) async {
     final response = await dio.post<Map<String, dynamic>>(
       '/auth/login',
-      data: <String, String>{'email': email, 'password': password},
+      data: <String, String>{'identifier': identifier, 'password': password},
     );
     final session = AuthSession.fromJson(response.data ?? <String, dynamic>{});
     await _storeTokens(session);
