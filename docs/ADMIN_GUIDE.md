@@ -30,6 +30,8 @@ after scheduled end. Review `missing_checkout` and unauthorized early-departure 
 - Review permission and leave requests with a written comment where useful. Approved leave reduces
   the employee's annual balance and affects attendance.
 - Review uploaded employee documents and act on in-app expiration alerts.
+- Send Proof of Presence to an employee, branch, or operational group and review verified,
+  outside-branch, pending-review, or no-response results with distance and deadline.
 - Generate filtered reports and download exports only from the authenticated company portal.
 - In **Report center**, combine employee, branch, department, group, period, and status filters;
   configure ranking visibility/anonymization separately. Report downloads expire after seven days,

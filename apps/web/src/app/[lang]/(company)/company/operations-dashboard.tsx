@@ -64,6 +64,17 @@ type Attendance = {
   late_minutes: number;
   is_manual: boolean;
 };
+type PresenceResult = {
+  id: string;
+  request_id: string;
+  membership_id: string;
+  message: string;
+  deadline_at: string;
+  status: string;
+  responded_at: string | null;
+  distance_m: number | null;
+  note: string | null;
+};
 type Task = {
   id: string;
   title: string;
@@ -179,6 +190,7 @@ export async function OperationsDashboard({
   const [
     overview,
     attendance,
+    presenceResults,
     tasks,
     permissions,
     leaveTypes,
@@ -198,6 +210,7 @@ export async function OperationsDashboard({
     await Promise.all([
       canManage ? jsonOr<Overview | null>("/reports/overview", null) : Promise.resolve(null),
       jsonOr<Attendance[]>(canManage ? "/attendance" : "/attendance/me", []),
+      canManage ? jsonOr<PresenceResult[]>("/presence-requests", []) : Promise.resolve([]),
       jsonOr<Task[]>(canManage ? "/tasks" : "/tasks?mine=true", []),
       jsonOr<PermissionRequest[]>(canManage ? "/permission-requests" : "/permission-requests?mine=true", []),
       jsonOr<LeaveType[]>("/leave/types", []),
@@ -298,6 +311,25 @@ export async function OperationsDashboard({
           {attendance.length === 0 && <p className="empty-state">{ar ? "لا توجد سجلات حضور بعد." : "No attendance records yet."}</p>}
         </div>
       </section>
+
+      {canManage && (
+        <section className="portal-section" aria-labelledby="presence-title">
+          <div className="section-heading"><h2 id="presence-title">{ar ? "إثبات التواجد" : "Proof of Presence"}</h2><span className="status-pill">{presenceResults.length}</span></div>
+          <p>{ar ? "استهدف موظفاً أو فرعاً أو مجموعة، ثم راقب الرد والمسافة أو عدم الاستجابة." : "Target an employee, branch, or group, then review response distance or no-response status."}</p>
+          <form action={presenceAction} className="portal-form operation-form">
+            <select name="membership_ids"><option value="">{ar ? "بدون موظف محدد" : "No individual employee"}</option>{employees.map((employee) => <option key={employee.membership_id} value={employee.membership_id}>{employee.display_name}</option>)}</select>
+            <select name="branch_id"><option value="">{ar ? "بدون فرع" : "No branch"}</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>
+            <select name="group_id"><option value="">{ar ? "بدون مجموعة" : "No group"}</option>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select>
+            <input name="message" required defaultValue={ar ? "يرجى تأكيد تواجدك في الفرع الآن" : "Please confirm your presence at the branch now"} />
+            <label>{ar ? "مهلة الرد بالثواني" : "Response deadline (seconds)"}<input name="deadline_seconds" type="number" min="30" max="3600" defaultValue="300" /></label>
+            <button type="submit">{ar ? "إرسال طلب عاجل" : "Send urgent request"}</button>
+          </form>
+          <div className="data-table-wrap">
+            <table className="data-table"><thead><tr><th>{ar ? "الموظف" : "Employee"}</th><th>{ar ? "الحالة" : "Status"}</th><th>{ar ? "المهلة" : "Deadline"}</th><th>{ar ? "المسافة" : "Distance"}</th></tr></thead><tbody>{presenceResults.map((item) => <tr key={item.id}><td>{employeeName(employees, item.membership_id)}</td><td><span className="status-pill">{item.status}</span></td><td>{formatDate(item.deadline_at, locale)}</td><td>{item.distance_m === null ? "—" : `${item.distance_m}m`}</td></tr>)}</tbody></table>
+            {presenceResults.length === 0 && <p className="empty-state">{ar ? "لا توجد طلبات إثبات تواجد بعد." : "No presence challenges yet."}</p>}
+          </div>
+        </section>
+      )}
 
       <section className="portal-section" aria-labelledby="tasks-title">
         <div className="section-heading"><h2 id="tasks-title">{ar ? "المهام" : "Tasks"}</h2><span className="status-pill">{tasks.length}</span></div>

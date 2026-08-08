@@ -250,6 +250,8 @@ export async function revokeQrTokenAction(locale: string, tokenId: string): Prom
 export async function createPresenceRequestAction(locale: string, formData: FormData): Promise<void> {
   await mutate(locale, "/presence-requests", "POST", {
     membership_ids: formData.getAll("membership_ids").map(String).filter(Boolean),
+    branch_id: optionalText(formData, "branch_id"),
+    group_id: optionalText(formData, "group_id"),
     message: text(formData, "message"),
     deadline_seconds: Number(text(formData, "deadline_seconds") || "300"),
   });

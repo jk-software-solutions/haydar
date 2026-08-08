@@ -215,6 +215,9 @@ Attendance QR administration includes create/list/revoke/rotate. Rotation revoke
 for that branch in the same transaction. Task status updates that request more time require a reason
 and requested due date; `/tasks/{id}/extension-decision` records the manager decision and approved
 due date.
+Proof of Presence creation accepts individual membership IDs, a branch, a group, or a union of
+those targets. Manager listing returns each recipient result and server-computed distance; the
+maintenance job persists expired pending recipients as `no_response`.
 - Reports: `GET /reports/overview`, dedicated attendance/geofence/leave/permissions/tasks/documents
   datasets with member/branch/department/group/period/status filters, configurable leaderboard
   settings/list, `POST/GET /reports/exports`, explicit export cleanup, and authenticated download.

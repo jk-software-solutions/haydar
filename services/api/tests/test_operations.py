@@ -4,9 +4,11 @@ from uuid import UUID, uuid4
 
 import httpx
 from sqlalchemy import update
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
+from app.jobs.maintenance import expire_presence_requests
+from app.models.attendance import PresenceRequest
 from app.models.platform import ExportJob
 
 
@@ -172,6 +174,67 @@ async def test_attendance_requires_approved_device_and_tracks_session(
         json={"version": 2, "attendance_biometric_policy": "optional"},
     )
     assert optional_biometric.status_code == 200
+
+    presence_group = await db_client.post(
+        "/api/v1/groups",
+        headers=auth_headers(owner),
+        json={"code": "PRESENCE", "name": "Presence Team"},
+    )
+    assert presence_group.status_code == 201
+    presence_members = await db_client.put(
+        f"/api/v1/groups/{presence_group.json()['id']}/members",
+        headers=auth_headers(owner),
+        json={"membership_ids": [employee["session"]["membership_id"]]},
+    )
+    assert presence_members.status_code == 200
+    group_challenge = await db_client.post(
+        "/api/v1/presence-requests",
+        headers=auth_headers(owner),
+        json={
+            "group_id": presence_group.json()["id"],
+            "message": "Confirm group presence",
+            "deadline_seconds": 300,
+        },
+    )
+    assert group_challenge.status_code == 201
+    assert len(group_challenge.json()) == 1
+    presence_response = await db_client.post(
+        f"/api/v1/presence-requests/{group_challenge.json()[0]['request_id']}/respond",
+        headers=auth_headers(employee, installation_id),
+        json={"latitude": "24.713600", "longitude": "46.675300"},
+    )
+    assert presence_response.status_code == 200
+    assert presence_response.json()["status"] == "verified"
+    timeout_challenge = await db_client.post(
+        "/api/v1/presence-requests",
+        headers=auth_headers(owner),
+        json={
+            "membership_ids": [employee["session"]["membership_id"]],
+            "message": "Timeout coverage",
+            "deadline_seconds": 30,
+        },
+    )
+    assert timeout_challenge.status_code == 201
+    settings = get_settings()
+    assert settings.test_database_url is not None
+    presence_engine = create_async_engine(settings.test_database_url)
+    presence_sessions = async_sessionmaker(presence_engine, expire_on_commit=False)
+    async with presence_sessions() as presence_session:
+        await presence_session.execute(
+            update(PresenceRequest)
+            .where(PresenceRequest.id == UUID(timeout_challenge.json()[0]["request_id"]))
+            .values(deadline_at=datetime.now(UTC) - timedelta(seconds=1))
+        )
+        assert await expire_presence_requests(presence_session, datetime.now(UTC)) == 1
+        await presence_session.commit()
+    await presence_engine.dispose()
+    presence_results = await db_client.get(
+        "/api/v1/presence-requests", headers=auth_headers(owner)
+    )
+    assert presence_results.status_code == 200
+    statuses = {item["request_id"]: item["status"] for item in presence_results.json()}
+    assert statuses[group_challenge.json()[0]["request_id"]] == "verified"
+    assert statuses[timeout_challenge.json()[0]["request_id"]] == "no_response"
 
     rotated = await db_client.post(
         "/api/v1/attendance/qr-tokens/rotate",
