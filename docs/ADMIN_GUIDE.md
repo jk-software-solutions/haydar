@@ -31,6 +31,9 @@ after scheduled end. Review `missing_checkout` and unauthorized early-departure 
   the employee's annual balance and affects attendance.
 - Review uploaded employee documents and act on in-app expiration alerts.
 - Generate filtered reports and download exports only from the authenticated company portal.
+- In **Report center**, combine employee, branch, department, group, period, and status filters;
+  configure ranking visibility/anonymization separately. Report downloads expire after seven days,
+  so regenerate an expired export rather than sharing a stale link.
 
 ## Security routine
 

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -121,6 +121,9 @@ class ExportJob(Base):
     file_content: Mapped[bytes | None] = mapped_column(LargeBinary)
     error_message: Mapped[str | None] = mapped_column(String(1000))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: utc_now() + timedelta(days=7), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
@@ -166,6 +169,7 @@ class AttendanceLeaderboardSetting(Base):
     company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), primary_key=True)
     visibility: Mapped[str] = mapped_column(String(24), default="disabled", nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    anonymize: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )

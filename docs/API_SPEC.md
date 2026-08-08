@@ -215,8 +215,11 @@ Attendance QR administration includes create/list/revoke/rotate. Rotation revoke
 for that branch in the same transaction. Task status updates that request more time require a reason
 and requested due date; `/tasks/{id}/extension-decision` records the manager decision and approved
 due date.
-- Reports: `GET /reports/overview`, `GET /reports/attendance`, leaderboard settings/list,
-  `POST/GET /reports/exports`, and `GET /reports/exports/{id}/download`.
+- Reports: `GET /reports/overview`, dedicated attendance/geofence/leave/permissions/tasks/documents
+  datasets with member/branch/department/group/period/status filters, configurable leaderboard
+  settings/list, `POST/GET /reports/exports`, explicit export cleanup, and authenticated download.
+  Export responses include a seven-day `expires_at`; expired binary content is removed and download
+  returns `410 export_expired`.
 - Billing: public `GET /billing/plans`, tenant `GET /billing/subscription`, coupon validation,
   and payment-provider capability status.
 - Platform: dashboard, company list/status/plan management, coupon management, support sessions,

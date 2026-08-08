@@ -16,7 +16,7 @@ import {
   reviewGeofenceExitAction,
   updateNotificationPreferencesAction,
 } from "./operations-actions";
-import { OperationsDashboard } from "./operations-dashboard";
+import { OperationsDashboard, type ReportFilters } from "./operations-dashboard";
 import { ShiftForm } from "./shift-form";
 
 type Invitation = {
@@ -83,10 +83,26 @@ type NotificationPreferences = {
 
 export default async function CompanyPortal({
   params,
+  searchParams,
 }: {
   params: Promise<{ lang: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { lang } = await params;
+  const query = await searchParams;
+  const reportValue = (key: string) => {
+    const value = query[`report_${key}`];
+    return typeof value === "string" ? value : undefined;
+  };
+  const reportFilters: ReportFilters = {
+    date_from: reportValue("date_from"),
+    date_to: reportValue("date_to"),
+    membership_id: reportValue("membership_id"),
+    branch_id: reportValue("branch_id"),
+    department_id: reportValue("department_id"),
+    group_id: reportValue("group_id"),
+    status: reportValue("status"),
+  };
   const ar = lang === "ar";
   const session = await getWebSession();
   if (!session) redirect(`/${lang}/login`);
@@ -313,6 +329,9 @@ export default async function CompanyPortal({
           employees={employeePayload.items}
           branches={branchPayload.items}
           shifts={shiftPayload.items}
+          departments={departmentPayload.items}
+          groups={groupPayload.items}
+          reportFilters={reportFilters}
         />
         <section className="portal-section">
           <div className="portal-header">

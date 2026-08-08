@@ -14,6 +14,7 @@ import {
   reviewPermissionAction,
   setLeaveBalanceAction,
   updateDocumentAction,
+  updateLeaderboardSettingsAction,
   updateTaskStatusAction,
 } from "./operations-actions";
 import { QrTokenForm } from "./qr-token-form";
@@ -23,6 +24,23 @@ import { authorizedApiFetch } from "@/lib/auth/server-session";
 type Employee = { membership_id: string; display_name: string; role_code: string };
 type Branch = { id: string; name: string };
 type Shift = { id: string; name: string };
+type NamedOption = { id: string; name: string };
+export type ReportFilters = {
+  date_from?: string;
+  date_to?: string;
+  membership_id?: string;
+  branch_id?: string;
+  department_id?: string;
+  group_id?: string;
+  status?: string;
+};
+type DatasetReport = {
+  items: Record<string, unknown>[];
+  total: number;
+  status_counts: Record<string, number>;
+};
+type LeaderboardItem = { rank: number; display_name: string; on_time_days: number; worked_minutes: number };
+type LeaderboardSettings = { visibility: string; enabled: boolean; anonymize: boolean };
 type Overview = {
   employees: number;
   branches: number;
@@ -101,6 +119,7 @@ type ExportJob = {
   status: string;
   progress_percent: number;
   filename: string | null;
+  expires_at: string;
 };
 type Subscription = {
   status: string;
@@ -132,15 +151,50 @@ export async function OperationsDashboard({
   employees,
   branches,
   shifts,
+  departments,
+  groups,
+  reportFilters,
 }: {
   locale: string;
   canManage: boolean;
   employees: Employee[];
   branches: Branch[];
   shifts: Shift[];
+  departments: NamedOption[];
+  groups: NamedOption[];
+  reportFilters: ReportFilters;
 }) {
   const ar = locale === "ar";
-  const [overview, attendance, tasks, permissions, leaveTypes, leaveRequests, documents, exports, subscription] =
+  const reportParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(reportFilters)) {
+    if (value) reportParams.set(key, value);
+  }
+  const reportSuffix = reportParams.size ? `?${reportParams.toString()}` : "";
+  const leaderboardParams = new URLSearchParams();
+  for (const key of ["date_from", "date_to", "branch_id", "department_id"] as const) {
+    const value = reportFilters[key];
+    if (value) leaderboardParams.set(key, value);
+  }
+  const leaderboardSuffix = leaderboardParams.size ? `?${leaderboardParams.toString()}` : "";
+  const [
+    overview,
+    attendance,
+    tasks,
+    permissions,
+    leaveTypes,
+    leaveRequests,
+    documents,
+    exports,
+    subscription,
+    attendanceReport,
+    geofenceReport,
+    leaveReport,
+    permissionReport,
+    taskReport,
+    documentReport,
+    leaderboard,
+    leaderboardSettings,
+  ] =
     await Promise.all([
       canManage ? jsonOr<Overview | null>("/reports/overview", null) : Promise.resolve(null),
       jsonOr<Attendance[]>(canManage ? "/attendance" : "/attendance/me", []),
@@ -151,6 +205,14 @@ export async function OperationsDashboard({
       jsonOr<Document[]>("/documents", []),
       canManage ? jsonOr<ExportJob[]>("/reports/exports", []) : Promise.resolve([]),
       jsonOr<Subscription | null>("/billing/subscription", null),
+      canManage ? jsonOr<DatasetReport>(`/reports/attendance${reportSuffix}`, { items: [], total: 0, status_counts: {} }) : Promise.resolve({ items: [], total: 0, status_counts: {} }),
+      canManage ? jsonOr<DatasetReport>(`/reports/geofence-exits${reportSuffix}`, { items: [], total: 0, status_counts: {} }) : Promise.resolve({ items: [], total: 0, status_counts: {} }),
+      canManage ? jsonOr<DatasetReport>(`/reports/leave${reportSuffix}`, { items: [], total: 0, status_counts: {} }) : Promise.resolve({ items: [], total: 0, status_counts: {} }),
+      canManage ? jsonOr<DatasetReport>(`/reports/permissions${reportSuffix}`, { items: [], total: 0, status_counts: {} }) : Promise.resolve({ items: [], total: 0, status_counts: {} }),
+      canManage ? jsonOr<DatasetReport>(`/reports/tasks${reportSuffix}`, { items: [], total: 0, status_counts: {} }) : Promise.resolve({ items: [], total: 0, status_counts: {} }),
+      canManage ? jsonOr<DatasetReport>(`/reports/documents${reportSuffix}`, { items: [], total: 0, status_counts: {} }) : Promise.resolve({ items: [], total: 0, status_counts: {} }),
+      canManage ? jsonOr<LeaderboardItem[]>(`/reports/leaderboard${leaderboardSuffix}`, []) : Promise.resolve([]),
+      canManage ? jsonOr<LeaderboardSettings>("/reports/leaderboard/settings", { visibility: "disabled", enabled: false, anonymize: false }) : Promise.resolve({ visibility: "disabled", enabled: false, anonymize: false }),
     ]);
 
   const taskAction = createTaskAction.bind(null, locale);
@@ -162,6 +224,15 @@ export async function OperationsDashboard({
   const manualAttendanceAction = createManualAttendanceAction.bind(null, locale);
   const presenceAction = createPresenceRequestAction.bind(null, locale);
   const exportAction = createReportExportAction.bind(null, locale);
+  const leaderboardAction = updateLeaderboardSettingsAction.bind(null, locale);
+  const reportSections = [
+    { key: "attendance", label: ar ? "الحضور" : "Attendance", report: attendanceReport },
+    { key: "geofence", label: ar ? "مغادرة النطاق" : "Geofence exits", report: geofenceReport },
+    { key: "leave", label: ar ? "الإجازات" : "Leave", report: leaveReport },
+    { key: "permissions", label: ar ? "الاستئذانات" : "Permissions", report: permissionReport },
+    { key: "tasks", label: ar ? "المهام" : "Tasks", report: taskReport },
+    { key: "documents", label: ar ? "الوثائق" : "Documents", report: documentReport },
+  ];
 
   return (
     <>
@@ -343,6 +414,43 @@ export async function OperationsDashboard({
       </section>
 
       {canManage && <section className="portal-section split-sections"><div><h2>{ar ? "التقارير والتصدير" : "Reports and exports"}</h2><form action={exportAction} className="portal-form operation-form"><select name="report_type"><option value="attendance">Attendance</option><option value="geofence_exits">Unauthorized exits</option><option value="leave">Leave</option><option value="permissions">Permissions</option><option value="tasks">Tasks</option><option value="documents">Documents</option><option value="branches">Branches</option><option value="shifts">Shifts</option></select><select name="export_format"><option value="pdf">PDF</option><option value="xlsx">Excel/XLSX</option></select><input name="date_from" type="date" /><input name="date_to" type="date" /><button type="submit">{ar ? "إنشاء التصدير" : "Create export"}</button></form><ul className="operation-list">{exports.map((job) => <li key={job.id}><div><strong>{job.report_type} · {job.export_format.toUpperCase()}</strong><span>{job.status} · {job.progress_percent}%</span></div>{job.status === "completed" && <a className="language-link" href={`/api/exports/${job.id}`}>{ar ? "تنزيل" : "Download"}</a>}</li>)}</ul></div><div><h2>{ar ? "الاشتراك" : "Subscription"}</h2>{subscription ? <article className="subscription-card"><span className="status-pill">{subscription.status}</span><h3>{subscription.plan.name}</h3><p>{subscription.plan.code} · {subscription.billing_cycle}</p><p>{ar ? "ينتهي" : "Ends"}: {formatDate(subscription.ends_at, locale)}</p><pre>{JSON.stringify(subscription.plan.limits, null, 2)}</pre></article> : <p className="empty-state">{ar ? "لا يوجد اشتراك فعال." : "No active subscription."}</p>}</div></section>}
+      {canManage && (
+        <section className="portal-section" aria-labelledby="report-center-title">
+          <div className="section-heading">
+            <div><h2 id="report-center-title">{ar ? "مركز التقارير" : "Report center"}</h2><p>{ar ? "تطبق الفلاتر على التقارير والترتيب." : "Filters apply to reports and attendance ranking."}</p></div>
+            <a className="language-link" href={`/${locale}/company`}>{ar ? "مسح الفلاتر" : "Clear filters"}</a>
+          </div>
+          <form method="get" action={`/${locale}/company`} className="portal-form operation-form">
+            <input name="report_date_from" type="date" defaultValue={reportFilters.date_from ?? ""} aria-label={ar ? "من تاريخ" : "From date"} />
+            <input name="report_date_to" type="date" defaultValue={reportFilters.date_to ?? ""} aria-label={ar ? "إلى تاريخ" : "To date"} />
+            <select name="report_membership_id" defaultValue={reportFilters.membership_id ?? ""}><option value="">{ar ? "كل الموظفين" : "All employees"}</option>{employees.map((item) => <option key={item.membership_id} value={item.membership_id}>{item.display_name}</option>)}</select>
+            <select name="report_branch_id" defaultValue={reportFilters.branch_id ?? ""}><option value="">{ar ? "كل الفروع" : "All branches"}</option>{branches.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+            <select name="report_department_id" defaultValue={reportFilters.department_id ?? ""}><option value="">{ar ? "كل الأقسام" : "All departments"}</option>{departments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+            <select name="report_group_id" defaultValue={reportFilters.group_id ?? ""}><option value="">{ar ? "كل المجموعات" : "All groups"}</option>{groups.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+            <input name="report_status" defaultValue={reportFilters.status ?? ""} placeholder={ar ? "الحالة (اختياري)" : "Status (optional)"} />
+            <button type="submit">{ar ? "تطبيق الفلاتر" : "Apply filters"}</button>
+          </form>
+          <div className="metric-grid">
+            {reportSections.map(({ key, label, report }) => (
+              <details className="metric-card" key={key}>
+                <summary><span>{label}</span><strong>{report.total}</strong></summary>
+                <small>{Object.entries(report.status_counts).map(([itemStatus, count]) => `${itemStatus}: ${count}`).join(" · ") || (ar ? "لا توجد نتائج" : "No results")}</small>
+                <ul className="operation-list">{report.items.slice(0, 10).map((item) => <li key={String(item.id)}><span>{String(item.title ?? item.document_type ?? item.request_type ?? item.starts_on ?? item.id)}</span><small>{String(item.status ?? "")}</small></li>)}</ul>
+              </details>
+            ))}
+          </div>
+          <div className="split-sections">
+            <div><h3>{ar ? "ترتيب الحضور" : "Attendance ranking"}</h3><ol className="operation-list">{leaderboard.map((item) => <li key={`${item.rank}-${item.display_name}`}><strong>#{item.rank} {item.display_name}</strong><span>{item.on_time_days} {ar ? "أيام في الوقت" : "on-time days"} · {item.worked_minutes}m</span></li>)}</ol>{leaderboard.length === 0 && <p className="empty-state">{ar ? "الترتيب معطل أو لا توجد بيانات ضمن الفترة." : "Ranking is disabled or no data matches the period."}</p>}</div>
+            <form action={leaderboardAction} className="portal-form operation-form">
+              <h3>{ar ? "خصوصية الترتيب" : "Ranking privacy"}</h3>
+              <label className="checkbox-field"><input type="checkbox" name="enabled" defaultChecked={leaderboardSettings.enabled} />{ar ? "تفعيل الترتيب" : "Enable ranking"}</label>
+              <label className="checkbox-field"><input type="checkbox" name="anonymize" defaultChecked={leaderboardSettings.anonymize} />{ar ? "إخفاء أسماء الموظفين" : "Anonymize employee names"}</label>
+              <select name="visibility" defaultValue={leaderboardSettings.visibility}><option value="disabled">{ar ? "معطل" : "Disabled"}</option><option value="manager_only">{ar ? "الإدارة فقط" : "Managers only"}</option><option value="branch">{ar ? "نفس الفرع" : "Same branch"}</option><option value="company">{ar ? "كل الشركة" : "Whole company"}</option></select>
+              <button type="submit">{ar ? "حفظ الخصوصية" : "Save privacy"}</button>
+            </form>
+          </div>
+        </section>
+      )}
     </>
   );
 }

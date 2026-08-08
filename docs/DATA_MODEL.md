@@ -151,3 +151,7 @@ constraints prevent duplicate daily attendance, multiple open attendance session
 assignments, duplicate task assignees, and repeated coupon redemption. Application queries still
 include explicit company criteria; database constraints are defense in depth rather than a
 replacement for authorization.
+
+Revisions `20260808_0023` and `20260808_0024` add indexed export expiry for retention cleanup and
+the leaderboard anonymization flag. Export metadata remains available after expiry while binary
+content and its media type are cleared.

@@ -1,8 +1,13 @@
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from app.core.config import get_settings
+from app.models.platform import ExportJob
 
 
 def auth_headers(session: dict[str, Any], installation_id: str | None = None) -> dict[str, str]:
@@ -688,6 +693,75 @@ async def test_tasks_leave_files_exports_and_tenant_isolation(
     )
     assert replacement.status_code == 200
     assert replacement.json()["attachment_file_id"] == replacement_file_id
+    group = await db_client.post(
+        "/api/v1/groups",
+        headers=auth_headers(owner),
+        json={"code": "REPORT", "name": "Report Team"},
+    )
+    assert group.status_code == 201
+    group_members = await db_client.put(
+        f"/api/v1/groups/{group.json()['id']}/members",
+        headers=auth_headers(owner),
+        json={"membership_ids": [membership_id]},
+    )
+    assert group_members.status_code == 200
+    permission_report_source = await db_client.post(
+        "/api/v1/permission-requests",
+        headers=auth_headers(employee),
+        json={
+            "request_type": "one_hour",
+            "starts_at": "2026-10-02T09:00:00Z",
+            "ends_at": "2026-10-02T10:00:00Z",
+            "reason": "Dedicated report coverage",
+        },
+    )
+    assert permission_report_source.status_code == 201
+    task_report = await db_client.get(
+        "/api/v1/reports/tasks",
+        headers=auth_headers(owner),
+        params={"group_id": group.json()["id"], "status": "in_progress"},
+    )
+    assert task_report.status_code == 200
+    assert task_report.json()["total"] == 1
+    assert task_report.json()["items"][0]["id"] == task_id
+    leave_report = await db_client.get(
+        "/api/v1/reports/leave",
+        headers=auth_headers(owner),
+        params={"membership_id": membership_id, "status": "approved"},
+    )
+    assert leave_report.status_code == 200
+    assert leave_report.json()["total"] == 2
+    permission_report = await db_client.get(
+        "/api/v1/reports/permissions",
+        headers=auth_headers(owner),
+        params={"group_id": group.json()["id"], "status": "pending"},
+    )
+    assert permission_report.status_code == 200
+    assert permission_report.json()["total"] == 1
+    document_report = await db_client.get(
+        "/api/v1/reports/documents",
+        headers=auth_headers(owner),
+        params={"membership_id": membership_id, "status": "pending_review"},
+    )
+    assert document_report.status_code == 200
+    assert document_report.json()["total"] == 1
+    ranking_settings = await db_client.put(
+        "/api/v1/reports/leaderboard/settings",
+        headers=auth_headers(owner),
+        json={"visibility": "company", "enabled": True, "anonymize": True},
+    )
+    assert ranking_settings.status_code == 200
+    assert ranking_settings.json()["anonymize"] is True
+    ranking_settings_read = await db_client.get(
+        "/api/v1/reports/leaderboard/settings", headers=auth_headers(owner)
+    )
+    assert ranking_settings_read.json() == ranking_settings.json()
+    invalid_ranking_period = await db_client.get(
+        "/api/v1/reports/leaderboard",
+        headers=auth_headers(owner),
+        params={"date_from": "2026-10-02", "date_to": "2026-10-01"},
+    )
+    assert invalid_ranking_period.status_code == 422
     cross_tenant_detail = await db_client.get(
         f"/api/v1/documents/{document_id}", headers=auth_headers(other_owner)
     )
@@ -735,6 +809,7 @@ async def test_tasks_leave_files_exports_and_tenant_isolation(
     )
     assert export.status_code == 201
     assert export.json()["status"] == "completed"
+    assert export.json()["expires_at"] is not None
     replayed_export = await db_client.post(
         "/api/v1/reports/exports", headers=export_headers, json=export_payload
     )
@@ -746,3 +821,24 @@ async def test_tasks_leave_files_exports_and_tenant_isolation(
     )
     assert download.status_code == 200
     assert download.content.startswith(b"PK")
+    settings = get_settings()
+    assert settings.test_database_url is not None
+    expiry_engine = create_async_engine(settings.test_database_url)
+    async with expiry_engine.begin() as connection:
+        await connection.execute(
+            update(ExportJob)
+            .where(ExportJob.id == UUID(export.json()["id"]))
+            .values(expires_at=datetime.now(UTC) - timedelta(minutes=1))
+        )
+    await expiry_engine.dispose()
+    cleanup = await db_client.post(
+        "/api/v1/reports/exports/cleanup", headers=auth_headers(owner)
+    )
+    assert cleanup.status_code == 200
+    assert cleanup.json()["cleaned"] == 1
+    expired_download = await db_client.get(
+        f"/api/v1/reports/exports/{export.json()['id']}/download",
+        headers=auth_headers(owner),
+    )
+    assert expired_download.status_code == 410
+    assert expired_download.json()["code"] == "export_expired"

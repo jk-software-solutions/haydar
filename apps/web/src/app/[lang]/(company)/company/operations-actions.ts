@@ -261,7 +261,24 @@ export async function createReportExportAction(locale: string, formData: FormDat
     export_format: text(formData, "export_format"),
     date_from: optionalText(formData, "date_from"),
     date_to: optionalText(formData, "date_to"),
+    membership_id: optionalText(formData, "membership_id"),
+    branch_id: optionalText(formData, "branch_id"),
+    department_id: optionalText(formData, "department_id"),
+    group_id: optionalText(formData, "group_id"),
+    shift_id: optionalText(formData, "shift_id"),
+    status: optionalText(formData, "status"),
     locale,
+  });
+}
+
+export async function updateLeaderboardSettingsAction(
+  locale: string,
+  formData: FormData,
+): Promise<void> {
+  await mutate(locale, "/reports/leaderboard/settings", "PUT", {
+    visibility: text(formData, "visibility"),
+    enabled: formData.get("enabled") === "on",
+    anonymize: formData.get("anonymize") === "on",
   });
 }
 
