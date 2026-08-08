@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import Link from "next/link";
 
 import { loginAction, type LoginState } from "./actions";
 
@@ -20,6 +21,9 @@ export function LoginForm({ locale }: { locale: string }) {
       {state.errors?.password?.map((error) => <p className="form-error" key={error}>{error}</p>)}
       <p className="form-error" aria-live="polite">{state.message}</p>
       <button type="submit" disabled={pending}>{pending ? (ar ? "جارٍ الدخول..." : "Signing in...") : (ar ? "تسجيل الدخول" : "Sign in")}</button>
+      <Link href={`/${locale}/forgot-password`}>
+        {ar ? "نسيت كلمة المرور؟" : "Forgot your password?"}
+      </Link>
     </form>
   );
 }

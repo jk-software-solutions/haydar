@@ -107,6 +107,21 @@ class RefreshSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+    __table_args__ = (
+        Index("ix_password_reset_tokens_user_active", "user_id", "used_at", "expires_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    delivery_status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class Invitation(Base):
     __tablename__ = "invitations"
     __table_args__ = (

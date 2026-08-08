@@ -368,6 +368,24 @@ embedded Google Maps, DNS/TLS, production database, legal/support identity, and 
 credential/authority-gated. At the user's direction, APK/AAB generation is deferred to the release
 owner and must use the real HTTPS API URL; it is not reported as complete in this checkpoint.
 
+### Final-plan audit and password recovery checkpoint (2026-08-08)
+
+The repository, PostgreSQL schema at `20260808_0012`, FastAPI routes/models, Flutter screens,
+Next.js portals, tests, release assets, and documentation were audited against the final master
+plan. `docs/FEATURE_MATRIX.md` now records every product/release area and all 45 mandatory E2E
+flows with exact `PASS`, `PARTIAL`, `MISSING`, `BLOCKED`, or `NOT_APPLICABLE` status and evidence.
+
+The earliest incomplete dependency, password recovery, is implemented through migration
+`20260808_0013`. Reset requests use a generic non-enumerating response; tokens are random, stored
+only as SHA-256 hashes, expire, are single-use, and revoke every refresh session after a successful
+Argon2id password change. A real SMTP adapter boundary is wired to web and Flutter reset screens;
+the API never returns the raw token. Production delivery remains blocked until the client supplies
+SMTP credentials and the final public reset URL.
+
+Backend Ruff, strict mypy, and all 18 PostgreSQL tests pass. Web ESLint, route generation, strict
+TypeScript, and all 16 Vitest tests pass. Flutter generation/formatting, analysis, and all seven
+tests pass. No Android build or emulator was run, following the user's explicit instruction.
+
 
 Every logical task must:
 

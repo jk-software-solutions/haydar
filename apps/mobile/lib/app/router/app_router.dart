@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/login_screen.dart';
+import '../../features/auth/presentation/password_reset_screen.dart';
 import '../../features/devices/presentation/device_requests_screen.dart';
 import '../../features/home/presentation/role_workspace_screen.dart';
 import '../../features/invitations/presentation/activate_invitation_screen.dart';
@@ -11,6 +12,10 @@ final GoRouter appRouter = GoRouter(
   routes: <RouteBase>[
     GoRoute(path: '/', builder: (context, state) => const SplashScreen()),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+    GoRoute(
+      path: '/forgot-password',
+      builder: (context, state) => const PasswordResetScreen(),
+    ),
     GoRoute(
       path: '/activate-invitation',
       builder: (context, state) => const ActivateInvitationScreen(),

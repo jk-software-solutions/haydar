@@ -1,10 +1,12 @@
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from re import sub
+from secrets import token_urlsafe
 from typing import Annotated
 from uuid import UUID
 
 import jwt
-from fastapi import APIRouter, Depends, Header, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,10 +28,12 @@ from app.models.identity import (
     Company,
     CompanyMembership,
     MembershipRole,
+    PasswordResetToken,
     RefreshSession,
     User,
 )
 from app.models.organization import EmployeeProfile
+from app.services import email_delivery
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_session)]
@@ -63,6 +67,24 @@ class RefreshRequest(BaseModel):
 
 class LogoutRequest(BaseModel):
     refresh_token: str = Field(min_length=32)
+
+
+class PasswordResetRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=320)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip().lower()
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class PasswordResetRequestResponse(BaseModel):
+    message: str
 
 
 class UserResponse(BaseModel):
@@ -332,6 +354,97 @@ async def login(
     )
     await session.commit()
     return response
+
+
+@router.post(
+    "/password-reset/request",
+    response_model=PasswordResetRequestResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def request_password_reset(
+    payload: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
+    session: DatabaseSession,
+) -> PasswordResetRequestResponse:
+    """Create a single-use reset token without revealing whether the account exists."""
+
+    user = await session.scalar(select(User).where(User.email == payload.email))
+    if user is not None and user.is_active:
+        now = datetime.now(UTC)
+        active_tokens = await session.scalars(
+            select(PasswordResetToken).where(
+                PasswordResetToken.user_id == user.id,
+                PasswordResetToken.used_at.is_(None),
+                PasswordResetToken.expires_at > now,
+            )
+        )
+        for item in active_tokens:
+            item.used_at = now
+        raw_token = token_urlsafe(48)
+        settings = get_settings()
+        reset_token = PasswordResetToken(
+            user_id=user.id,
+            token_hash=sha256(raw_token.encode("utf-8")).hexdigest(),
+            expires_at=now + timedelta(minutes=settings.password_reset_token_minutes),
+            delivery_status=(
+                "queued" if settings.smtp_host and settings.smtp_from_email else "not_configured"
+            ),
+        )
+        session.add(reset_token)
+        await session.commit()
+        if reset_token.delivery_status == "queued":
+            background_tasks.add_task(
+                email_delivery.send_password_reset_email,
+                recipient=user.email,
+                token=raw_token,
+            )
+    return PasswordResetRequestResponse(
+        message="If the account exists, password reset instructions will be delivered."
+    )
+
+
+@router.post("/password-reset/confirm", status_code=status.HTTP_204_NO_CONTENT)
+async def confirm_password_reset(
+    payload: PasswordResetConfirmRequest,
+    session: DatabaseSession,
+) -> None:
+    now = datetime.now(UTC)
+    item = await session.scalar(
+        select(PasswordResetToken)
+        .where(
+            PasswordResetToken.token_hash == sha256(payload.token.encode("utf-8")).hexdigest(),
+            PasswordResetToken.used_at.is_(None),
+            PasswordResetToken.expires_at > now,
+        )
+        .with_for_update()
+    )
+    if item is None:
+        raise ProblemError(
+            status=status.HTTP_400_BAD_REQUEST,
+            code="password_reset_invalid",
+            title="Password reset is invalid",
+            detail="The password reset link is expired, used, or invalid.",
+        )
+    user = await session.get(User, item.user_id)
+    if user is None or not user.is_active:
+        raise ProblemError(
+            status=status.HTTP_400_BAD_REQUEST,
+            code="password_reset_invalid",
+            title="Password reset is invalid",
+            detail="The password reset link is expired, used, or invalid.",
+        )
+    user.password_hash = hash_password(payload.new_password)
+    user.version += 1
+    item.used_at = now
+    refresh_sessions = await session.scalars(
+        select(RefreshSession).where(
+            RefreshSession.user_id == user.id,
+            RefreshSession.revoked_at.is_(None),
+        )
+    )
+    for refresh_session in refresh_sessions:
+        refresh_session.revoked_at = now
+    await session.commit()
 
 
 @router.get("/session", response_model=SessionResponse)

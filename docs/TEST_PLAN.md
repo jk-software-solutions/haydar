@@ -14,6 +14,8 @@ Every completion claim records the command and observed result.
 - Database tests: Alembic upgrade, constraints, duplicate prevention and
   overnight shift behavior against native PostgreSQL.
 - API tests: authentication, authorization, validation, idempotency and errors.
+- Password recovery tests: identical known/unknown responses, hashed one-time expiry,
+  password replacement, link reuse rejection, and revocation of every prior refresh session.
 - Isolation tests: a Company A identity cannot read, infer, update, delete,
   export or attach files to Company B records.
 

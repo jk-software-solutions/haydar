@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     platform_admin_emails: str = ""
     rate_limit_per_minute: int = Field(default=120, ge=10, le=10000)
     auth_rate_limit_per_minute: int = Field(default=20, ge=5, le=1000)
+    password_reset_token_minutes: int = Field(default=30, ge=5, le=120)
+    password_reset_url_base: str = "http://localhost:3000/en/reset-password"
+    smtp_host: str = ""
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_use_starttls: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:

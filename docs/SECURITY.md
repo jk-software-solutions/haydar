@@ -19,6 +19,13 @@ on the server.
   material in Secure, HttpOnly, SameSite cookies.
 - Hash password reset and invitation tokens at rest and enforce one-time use.
 
+Password reset requests always return the same accepted response for known and unknown emails.
+Reset tokens are random, stored only as SHA-256 hashes, expire after the configured short window,
+and are consumed under a row lock. A successful reset replaces the Argon2id password hash and
+revokes all active refresh sessions. Raw tokens are passed only to the SMTP adapter and are never
+returned by the API or written to logs. When SMTP is not configured, delivery is marked
+`not_configured`; the system does not claim an email was sent.
+
 ## Authorization and tenancy
 
 Permissions use stable domain/action pairs: view, create, edit, delete, approve,

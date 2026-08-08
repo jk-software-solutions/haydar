@@ -8,7 +8,8 @@ responsive Next.js administration portal, and a FastAPI/PostgreSQL backend.
 
 The repository is being built incrementally on the `develop` branch. Stable,
 tested milestones are promoted to `main`. Progress and verification evidence
-are maintained in [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md).
+are maintained in [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md) and
+[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md).
 
 ## Planned workspace
 
@@ -76,6 +77,7 @@ private network.
 
 ## Documentation
 
+- [Feature matrix](docs/FEATURE_MATRIX.md)
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Data model](docs/DATA_MODEL.md)
@@ -96,4 +98,4 @@ private network.
 - [Production deployment bundle](deploy/README.md)
 
 The authoritative product scope is recorded in
-[`HADIR_CODEX_MASTER_PROMPT.md`](HADIR_CODEX_MASTER_PROMPT.md).
+[`HADIR_CODEX_FINAL_MASTER_PLAN.md`](HADIR_CODEX_FINAL_MASTER_PLAN.md).

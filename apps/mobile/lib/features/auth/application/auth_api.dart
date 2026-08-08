@@ -30,6 +30,23 @@ class AuthApi {
     return session;
   }
 
+  Future<void> requestPasswordReset({required String email}) async {
+    await dio.post<void>(
+      '/auth/password-reset/request',
+      data: <String, String>{'email': email},
+    );
+  }
+
+  Future<void> confirmPasswordReset({
+    required String token,
+    required String newPassword,
+  }) async {
+    await dio.post<void>(
+      '/auth/password-reset/confirm',
+      data: <String, String>{'token': token, 'new_password': newPassword},
+    );
+  }
+
   Future<AuthSession> activateInvitation({
     required String activationToken,
     required String password,

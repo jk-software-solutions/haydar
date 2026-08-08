@@ -74,6 +74,15 @@ The initial deployment uses:
 
 No Docker image or Compose dependency is required.
 
+## Password-reset delivery
+
+Password recovery requires a client-owned SMTP relay and public HTTPS reset URL. Set
+`SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`,
+`SMTP_USE_STARTTLS`, `PASSWORD_RESET_URL_BASE`, and `PASSWORD_RESET_TOKEN_MINUTES` in the
+production secret store. Do not place these values in Git. Before release, request a reset for a
+dedicated test account, open the delivered link, change the password, prove the link cannot be
+reused, and prove all earlier sessions are revoked.
+
 ## Release sequence
 
 1. Verify backups and database compatibility.

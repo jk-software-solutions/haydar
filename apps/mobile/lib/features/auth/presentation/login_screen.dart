@@ -147,6 +147,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     TextButton(
                       onPressed: authState.isSubmitting
                           ? null
+                          : () => context.push('/forgot-password'),
+                      child: Text(l10n.forgotPasswordButton),
+                    ),
+                    TextButton(
+                      onPressed: authState.isSubmitting
+                          ? null
                           : () => context.push('/activate-invitation'),
                       child: Text(l10n.haveInvitationButton),
                     ),
