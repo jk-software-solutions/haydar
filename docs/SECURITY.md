@@ -116,6 +116,8 @@ adapter may report a successful external operation it did not perform.
 # Operations security extension
 
 - Attendance accepts only an approved device installation ID and validates GPS/QR data server-side.
+- Biometric confirmation runs locally through the operating system. HADIR stores no biometric data;
+  the API event boolean is an auditable client declaration, not hardware-backed attestation.
 - Protected files and exports never expose filesystem paths or public object URLs; every download is
   tenant- and permission-scoped.
 - API responses add request IDs, content-type/frame/referrer/permissions headers, and rate-limit

@@ -4,9 +4,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:local_auth/local_auth.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../../../core/device/biometric_gate.dart';
 import '../../auth/application/auth_api.dart';
 import '../application/attendance_api.dart';
 
@@ -26,7 +26,6 @@ class AttendanceScreen extends ConsumerStatefulWidget {
 
 class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
     with WidgetsBindingObserver {
-  final LocalAuthentication _localAuthentication = LocalAuthentication();
   List<AttendanceRecord> _records = <AttendanceRecord>[];
   List<PresenceChallenge> _presence = <PresenceChallenge>[];
   List<GeofenceExitEvent> _geofenceExits = <GeofenceExitEvent>[];
@@ -36,6 +35,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
   int? _lastDistance;
   StreamSubscription<Position>? _locationSubscription;
   String? _monitoredRecordId;
+  String _biometricPolicy = 'optional';
+  BiometricResult? _lastBiometricResult;
 
   bool get _ar => Localizations.localeOf(context).languageCode == 'ar';
   AttendanceRecord? get _openRecord =>
@@ -65,6 +66,9 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
   Future<void> _refresh() async {
     try {
       final api = ref.read(attendanceApiProvider);
+      final biometricPolicy = widget.managerMode
+          ? 'disabled'
+          : await api.biometricPolicy(widget.session);
       final records = await api.list(
         widget.session,
         allCompany: widget.managerMode,
@@ -81,6 +85,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
           _records = records;
           _presence = presence;
           _geofenceExits = geofenceExits;
+          _biometricPolicy = biometricPolicy;
           _error = null;
         });
         await _syncGeofenceMonitor();
@@ -257,19 +262,43 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
   }
 
   Future<bool> _authenticateLocally() async {
-    try {
-      if (!await _localAuthentication.isDeviceSupported()) return false;
-      return _localAuthentication.authenticate(
-        localizedReason: _ar
-            ? 'أكد عملية الحضور ببصمة الجهاز'
-            : 'Confirm attendance using device biometrics',
-        biometricOnly: true,
-        persistAcrossBackgrounding: true,
-      );
-    } on Object {
-      return false;
+    final result = await ref
+        .read(biometricGateProvider)
+        .confirm(
+          policy: _biometricPolicy,
+          localizedReason: _ar
+              ? 'أكد عملية الحضور ببصمة الجهاز'
+              : 'Confirm attendance using device biometrics',
+        );
+    if (mounted) setState(() => _lastBiometricResult = result);
+    if (_biometricPolicy == 'required' && result != BiometricResult.confirmed) {
+      throw StateError(_biometricMessage(result));
     }
+    return result == BiometricResult.confirmed;
   }
+
+  String _biometricMessage(BiometricResult result) => switch (result) {
+    BiometricResult.confirmed =>
+      _ar ? 'تم تأكيد البصمة.' : 'Biometric confirmation succeeded.',
+    BiometricResult.skipped =>
+      _ar ? 'البصمة معطلة.' : 'Biometrics are disabled.',
+    BiometricResult.unavailable =>
+      _ar
+          ? 'هذا الجهاز لا يدعم البصمة المتاحة.'
+          : 'Biometrics are unavailable on this device.',
+    BiometricResult.notEnrolled =>
+      _ar
+          ? 'سجّل بصمة في إعدادات الجهاز أولاً.'
+          : 'Enroll biometrics in device settings first.',
+    BiometricResult.cancelled =>
+      _ar ? 'أُلغي تأكيد البصمة.' : 'Biometric confirmation was cancelled.',
+    BiometricResult.lockedOut =>
+      _ar
+          ? 'البصمة مقفلة مؤقتاً. افتح الجهاز ثم أعد المحاولة.'
+          : 'Biometrics are locked. Unlock the device and retry.',
+    BiometricResult.failed =>
+      _ar ? 'تعذر إكمال تأكيد البصمة.' : 'Biometric confirmation failed.',
+  };
 
   Future<void> _submit({required String method, String? qrToken}) async {
     if (_submitting) return;
@@ -440,6 +469,30 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen>
                       ? 'أنت مسجل حضور حاليًا.'
                       : 'You are currently checked in.'),
           ),
+          if (!widget.managerMode) ...<Widget>[
+            const SizedBox(height: 10),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.fingerprint_rounded),
+                title: Text(
+                  _biometricPolicy == 'required'
+                      ? (_ar
+                            ? 'البصمة مطلوبة للحضور'
+                            : 'Biometrics required for attendance')
+                      : _biometricPolicy == 'disabled'
+                      ? (_ar
+                            ? 'البصمة معطلة بسياسة الشركة'
+                            : 'Biometrics disabled by company policy')
+                      : (_ar
+                            ? 'البصمة اختيارية عند توفرها'
+                            : 'Biometrics optional when available'),
+                ),
+                subtitle: _lastBiometricResult == null
+                    ? null
+                    : Text(_biometricMessage(_lastBiometricResult!)),
+              ),
+            ),
+          ],
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(top: 12),

@@ -54,6 +54,9 @@ class Company(Base):
         nullable=False,
     )
     country_code: Mapped[str] = mapped_column(String(2), default="SA", nullable=False)
+    attendance_biometric_policy: Mapped[str] = mapped_column(
+        String(16), default="optional", nullable=False
+    )
     version: Mapped[int] = mapped_column(default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(

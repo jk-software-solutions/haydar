@@ -155,3 +155,7 @@ replacement for authorization.
 Revisions `20260808_0023` and `20260808_0024` add indexed export expiry for retention cleanup and
 the leaderboard anonymization flag. Export metadata remains available after expiry while binary
 content and its media type are cleared.
+
+Revision `20260808_0025` adds the constrained company attendance biometric policy. Individual
+attendance events retain only whether the approved-device client declared a successful local
+confirmation; no biometric template or biometric data is stored.

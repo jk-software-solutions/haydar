@@ -33,6 +33,15 @@ class AttendanceApi {
   String _newIdempotencyKey() =>
       'mobile-${DateTime.now().toUtc().microsecondsSinceEpoch}';
 
+  Future<String> biometricPolicy(AuthSession session) async {
+    final response = await dio.get<Map<String, dynamic>>(
+      '/companies/current',
+      options: _auth(session),
+    );
+    return response.data?['attendance_biometric_policy'] as String? ??
+        'optional';
+  }
+
   Future<List<AttendanceRecord>> list(
     AuthSession session, {
     bool allCompany = false,

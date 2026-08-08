@@ -153,6 +153,26 @@ async def test_attendance_requires_approved_device_and_tracks_session(
     assert registration.status_code == 201
     assert registration.json()["device"]["status"] == "approved"
 
+    required_biometric = await db_client.patch(
+        "/api/v1/companies/current",
+        headers=auth_headers(owner),
+        json={"version": 1, "attendance_biometric_policy": "required"},
+    )
+    assert required_biometric.status_code == 200
+    required_rejection = await db_client.post(
+        "/api/v1/attendance/check-in",
+        headers=auth_headers(employee, installation_id),
+        json=action,
+    )
+    assert required_rejection.status_code == 403
+    assert required_rejection.json()["code"] == "biometric_confirmation_required"
+    optional_biometric = await db_client.patch(
+        "/api/v1/companies/current",
+        headers=auth_headers(owner),
+        json={"version": 2, "attendance_biometric_policy": "optional"},
+    )
+    assert optional_biometric.status_code == 200
+
     rotated = await db_client.post(
         "/api/v1/attendance/qr-tokens/rotate",
         headers=auth_headers(owner),

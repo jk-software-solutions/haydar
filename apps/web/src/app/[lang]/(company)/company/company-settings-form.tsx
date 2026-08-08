@@ -9,6 +9,7 @@ export type CompanySettings = {
   default_locale: string;
   timezone: string;
   country_code: string;
+  attendance_biometric_policy: "disabled" | "optional" | "required";
   version: number;
 };
 
@@ -25,6 +26,15 @@ export function CompanySettingsForm({ settings, locale }: { settings: CompanySet
       <label>{ar ? "اللغة الافتراضية" : "Default language"}<select name="default_locale" defaultValue={settings.default_locale}><option value="ar">العربية</option><option value="en">English</option></select></label>
       <label>{ar ? "المنطقة الزمنية" : "Timezone"}<input name="timezone" defaultValue={settings.timezone} required /></label>
       <label>{ar ? "رمز الدولة" : "Country code"}<input name="country_code" defaultValue={settings.country_code} maxLength={2} required /></label>
+      <label>
+        {ar ? "سياسة تأكيد الحضور بالبصمة" : "Attendance biometric policy"}
+        <select name="attendance_biometric_policy" defaultValue={settings.attendance_biometric_policy}>
+          <option value="disabled">{ar ? "معطلة" : "Disabled"}</option>
+          <option value="optional">{ar ? "اختيارية عند توفرها" : "Optional when available"}</option>
+          <option value="required">{ar ? "مطلوبة" : "Required"}</option>
+        </select>
+        <small>{ar ? "البصمة تحقق محلي على الجهاز المعتمد وليست إثباتاً مشفراً للخادم." : "Biometrics are checked locally on the approved device; the server declaration is not cryptographic attestation."}</small>
+      </label>
       <button type="submit" disabled={pending}>{pending ? (ar ? "جارٍ الحفظ..." : "Saving...") : (ar ? "حفظ الإعدادات" : "Save settings")}</button>
       <p className={state.success ? "form-success" : "form-error"} aria-live="polite">{state.message}</p>
     </form>

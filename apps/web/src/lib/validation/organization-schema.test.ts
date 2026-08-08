@@ -29,7 +29,21 @@ describe("organization schemas", () => {
       default_locale: "ar",
       timezone: "Asia/Riyadh",
       country_code: "Saudi Arabia",
+      attendance_biometric_policy: "optional",
     });
     expect(result.success).toBe(false);
+  });
+
+  it("accepts only an explicit biometric policy", () => {
+    const valid = companySettingsSchema.parse({
+      version: "3",
+      display_name: "My Company",
+      default_locale: "en",
+      timezone: "Asia/Riyadh",
+      country_code: "sa",
+      attendance_biometric_policy: "required",
+    });
+    expect(valid.attendance_biometric_policy).toBe("required");
+    expect(valid.country_code).toBe("SA");
   });
 });

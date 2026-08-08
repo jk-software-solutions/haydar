@@ -74,6 +74,20 @@ class AttendanceActionRequest(BaseModel):
         return self
 
 
+def accepted_biometric_declaration(
+    context: TenantContext, payload: AttendanceActionRequest
+) -> bool:
+    policy = context.company.attendance_biometric_policy
+    if policy == "required" and not payload.biometric_confirmed:
+        raise ProblemError(
+            status=status.HTTP_403_FORBIDDEN,
+            code="biometric_confirmation_required",
+            title="Biometric confirmation required",
+            detail="Company policy requires local biometric confirmation for attendance.",
+        )
+    return policy != "disabled" and payload.biometric_confirmed
+
+
 class AttendanceRecordResponse(BaseModel):
     id: UUID
     membership_id: UUID
@@ -510,6 +524,7 @@ async def check_in(
     )
     if replay is not None:
         return AttendanceRecordResponse.model_validate(replay)
+    biometric_confirmed = accepted_biometric_declaration(context, payload)
     device = await approved_device(session, context, installation_id)
     now = datetime.now(UTC)
     branch, shift, work_date, scheduled_start, scheduled_end = await active_branch_and_shift(
@@ -566,7 +581,7 @@ async def check_in(
             latitude=payload.latitude,
             longitude=payload.longitude,
             distance_m=distance,
-            biometric_confirmed=payload.biometric_confirmed,
+            biometric_confirmed=biometric_confirmed,
         )
     )
     result = record_response(record)
@@ -589,6 +604,7 @@ async def check_out(
     )
     if replay is not None:
         return AttendanceRecordResponse.model_validate(replay)
+    biometric_confirmed = accepted_biometric_declaration(context, payload)
     device = await approved_device(session, context, installation_id)
     now = datetime.now(UTC)
     record = await session.scalar(
@@ -650,7 +666,7 @@ async def check_out(
             latitude=payload.latitude,
             longitude=payload.longitude,
             distance_m=distance,
-            biometric_confirmed=payload.biometric_confirmed,
+            biometric_confirmed=biometric_confirmed,
             details={"permission_id": str(permission) if permission else ""},
         )
     )

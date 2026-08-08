@@ -23,4 +23,5 @@ export const companySettingsSchema = z.object({
   default_locale: z.enum(["ar", "en"]),
   timezone: z.string().trim().min(1).max(64),
   country_code: z.string().trim().regex(/^[A-Za-z]{2}$/).transform((value) => value.toUpperCase()),
+  attendance_biometric_policy: z.enum(["disabled", "optional", "required"]),
 });

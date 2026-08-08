@@ -138,6 +138,7 @@ export async function updateCompanySettingsAction(
     default_locale: formData.get("default_locale"),
     timezone: formData.get("timezone"),
     country_code: formData.get("country_code"),
+    attendance_biometric_policy: formData.get("attendance_biometric_policy"),
   });
   if (!parsed.success) {
     return { message: "", errors: parsed.error.flatten().fieldErrors };

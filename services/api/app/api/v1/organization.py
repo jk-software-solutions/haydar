@@ -36,6 +36,7 @@ class CompanySettingsResponse(BaseModel):
     default_locale: str
     timezone: str
     country_code: str
+    attendance_biometric_policy: str
     version: int
 
 
@@ -52,6 +53,7 @@ class UpdateCompanySettingsRequest(BaseModel):
         max_length=2,
         pattern=r"^[A-Za-z]{2}$",
     )
+    attendance_biometric_policy: Literal["disabled", "optional", "required"] | None = None
 
     @field_validator("display_name", "timezone")
     @classmethod
@@ -65,7 +67,13 @@ class UpdateCompanySettingsRequest(BaseModel):
 
     @model_validator(mode="after")
     def reject_explicit_nulls(self) -> Self:
-        for field_name in {"display_name", "default_locale", "timezone", "country_code"}:
+        for field_name in {
+            "display_name",
+            "default_locale",
+            "timezone",
+            "country_code",
+            "attendance_biometric_policy",
+        }:
             if field_name in self.model_fields_set and getattr(self, field_name) is None:
                 raise ValueError(f"{field_name} cannot be null")
         return self
@@ -164,6 +172,7 @@ def company_response(company: Company) -> CompanySettingsResponse:
         default_locale=company.default_locale,
         timezone=company.timezone,
         country_code=company.country_code,
+        attendance_biometric_policy=company.attendance_biometric_policy,
         version=company.version,
     )
 

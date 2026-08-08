@@ -228,3 +228,6 @@ due date.
 Attendance mutations additionally require `X-Installation-ID` for the currently approved device.
 GPS distance and QR expiry/branch checks occur on the server. Export and file downloads are resolved
 under the authenticated company and return 404 across tenant boundaries.
+Company settings expose `attendance_biometric_policy` as `disabled`, `optional`, or `required`.
+Required mode rejects attendance declarations without local confirmation; the boolean is retained
+as event metadata and must not be interpreted as hardware-backed remote attestation.

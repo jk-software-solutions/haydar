@@ -58,3 +58,6 @@ supervisor-role members. Saving either branch details or supervisors refreshes t
 version; reload after a concurrency warning before retrying.
 QR controls distinguish creation from rotation: rotation invalidates all prior active tokens for the
 selected branch. Use explicit revoke if a displayed token may have been exposed.
+The company settings biometric policy can be disabled, optional, or required. Use required only
+after confirming every attendance device has enrolled biometrics; unsupported, unenrolled,
+cancelled, or locked-out devices cannot submit attendance while required mode is active.
