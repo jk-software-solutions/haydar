@@ -86,12 +86,220 @@ textarea {
 }
 
 .portal-form input,
-.portal-form select {
+.portal-form select,
+.portal-form textarea {
   min-height: 48px;
   padding: 0 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: white;
+}
+
+.portal-form textarea {
+  min-height: 100px;
+  padding-block: 12px;
+  resize: vertical;
+}
+
+.section-heading,
+.button-row,
+.inline-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-heading h2,
+.section-heading p {
+  margin-block: 0 6px;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metric-card,
+.task-card,
+.subscription-card,
+.operation-form-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #f8fbfa;
+}
+
+.metric-card {
+  display: grid;
+  gap: 8px;
+}
+
+.metric-card span,
+.task-card small,
+.operation-list span,
+.operation-list small {
+  color: var(--muted);
+}
+
+.metric-card strong {
+  font-size: 1.9rem;
+}
+
+.status-pill {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 28px;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgb(0 107 94 / 10%);
+  color: var(--primary-deep);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.status-pill.urgent {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.data-table-wrap {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  margin-top: 16px;
+  border-collapse: collapse;
+  text-align: start;
+}
+
+.data-table th,
+.data-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  white-space: nowrap;
+}
+
+.data-table th {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.operation-form {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #f8fbfa;
+}
+
+.operation-form-card {
+  margin-block: 14px;
+}
+
+.operation-form-card summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.kanban-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.task-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.inline-action {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.inline-action input,
+.inline-action select,
+.inline-action button {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: white;
+}
+
+.inline-action button,
+.operation-list button {
+  border: 0;
+  background: var(--primary);
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.split-sections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px;
+}
+
+.operation-list {
+  display: grid;
+  padding: 0;
+  gap: 10px;
+  list-style: none;
+}
+
+.operation-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.operation-list li > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.button-row button,
+.operation-list .language-link {
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 9px;
+}
+
+.empty-state {
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.subscription-card pre {
+  overflow-x: auto;
+  padding: 12px;
+  border-radius: 10px;
+  background: #eef5f3;
+}
+
+.platform-console {
+  width: min(100%, 1220px) !important;
+}
+
+.platform-company-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .portal-form button,
@@ -414,9 +622,23 @@ textarea {
   .employee-form,
   .settings-form,
   .branch-form,
-  .shift-form {
+  .shift-form,
+  .operation-form,
+  .split-sections {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .metric-grid,
+  .kanban-grid,
+  .platform-company-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .operation-list li,
+  .section-heading {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .branch-list li {

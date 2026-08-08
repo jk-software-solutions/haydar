@@ -5,7 +5,12 @@ import 'package:go_router/go_router.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../auth/application/auth_api.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../attendance/presentation/attendance_screen.dart';
 import '../../devices/presentation/employee_device_gate.dart';
+import '../../requests/presentation/requests_screen.dart';
+import '../../requests/presentation/manager_approvals_screen.dart';
+import '../../tasks/presentation/tasks_screen.dart';
+import '../../team/presentation/team_screen.dart';
 
 class RoleWorkspaceScreen extends ConsumerStatefulWidget {
   const RoleWorkspaceScreen({super.key});
@@ -166,6 +171,24 @@ class _RoleWorkspaceScreenState extends ConsumerState<RoleWorkspaceScreen> {
         roleLabel: _roleLabel(l10n, role),
       );
     }
+    if (employeeExperience && selectedIndex == 1) {
+      return AttendanceScreen(session: session);
+    }
+    if (employeeExperience && selectedIndex == 2) {
+      return TasksScreen(session: session);
+    }
+    if (employeeExperience && selectedIndex == 3) {
+      return RequestsScreen(session: session);
+    }
+    if (!employeeExperience && selectedIndex == 2) {
+      return AttendanceScreen(session: session, managerMode: true);
+    }
+    if (!employeeExperience && selectedIndex == 1) {
+      return TeamScreen(session: session);
+    }
+    if (!employeeExperience && selectedIndex == 3) {
+      return TasksScreen(session: session, managerMode: true);
+    }
     if (employeeExperience && selectedIndex == 4) {
       return _ProfileView(session: session, roleLabel: _roleLabel(l10n, role));
     }
@@ -174,6 +197,11 @@ class _RoleWorkspaceScreenState extends ConsumerState<RoleWorkspaceScreen> {
         canManage: _canManageInvitations(role),
         onInvitations: () => context.push('/app/invitations'),
         onDevices: () => context.push('/app/device-requests'),
+        onApprovals: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ManagerApprovalsScreen(session: session),
+          ),
+        ),
       );
     }
     final title = employeeExperience
@@ -301,11 +329,13 @@ class _ManagementMoreView extends StatelessWidget {
     required this.canManage,
     required this.onInvitations,
     required this.onDevices,
+    required this.onApprovals,
   });
 
   final bool canManage;
   final VoidCallback onInvitations;
   final VoidCallback onDevices;
+  final VoidCallback onApprovals;
 
   @override
   Widget build(BuildContext context) {
@@ -318,6 +348,23 @@ class _ManagementMoreView extends StatelessWidget {
       children: <Widget>[
         Text(l10n.navMore, style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 16),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.approval_outlined),
+            title: Text(
+              Localizations.localeOf(context).languageCode == 'ar'
+                  ? 'الموافقات'
+                  : 'Approvals',
+            ),
+            subtitle: Text(
+              Localizations.localeOf(context).languageCode == 'ar'
+                  ? 'مراجعة الاستئذانات والإجازات.'
+                  : 'Review permission and leave requests.',
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: onApprovals,
+          ),
+        ),
         Card(
           child: ListTile(
             leading: const Icon(Icons.mark_email_unread_outlined),

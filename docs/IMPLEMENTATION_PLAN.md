@@ -346,6 +346,29 @@ does not require a Google Maps credential.
 
 ## Checkpoint workflow
 
+### Days 11-28 operations checkpoint (2026-08-08)
+
+Attendance, GPS/geofence, QR tokens, optional local biometric confirmation, manual corrections,
+permissions, presence verification, tasks/comments/history, notifications, leave/balances,
+documents, reports/PDF/XLSX exports, four subscription plans/limits/coupons, platform administration,
+leaderboard privacy, protected file downloads, rate limiting, and scheduled maintenance are now
+implemented across FastAPI, Next.js, Flutter, and PostgreSQL revisions through `20260808_0012`.
+
+API Ruff and strict application mypy pass. All 15 original PostgreSQL tests plus two expanded
+operations tests pass; the new flows exercise approved-device attendance, duplicate prevention,
+check-out, tasks, notifications, leave approval, tenant-isolated files, plans, and XLSX download.
+The web portal passes ESLint, route type generation, strict TypeScript, all 16 Vitest tests, and an
+optimized Next.js 16.2.12 build. Flutter formatting, analysis, and all seven widget tests passed
+after replacing an AGP-incompatible file picker with the maintained file selector.
+
+The Android upload-key generator, launcher branding, signing configuration, production URL-guarded
+release script, Nginx/systemd/environment bundle, backup/restore utilities, Play checklist, privacy
+template, operator guides, limitations, roadmap, and final handoff are delivered. Firebase push,
+embedded Google Maps, DNS/TLS, production database, legal/support identity, and Play Console remain
+credential/authority-gated. At the user's direction, APK/AAB generation is deferred to the release
+owner and must use the real HTTPS API URL; it is not reported as complete in this checkpoint.
+
+
 Every logical task must:
 
 1. Review changed and staged files.

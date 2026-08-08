@@ -8,6 +8,7 @@
 *.keystore
 google-services.json
 GoogleService-Info.plist
+apps/mobile/android/key.properties
 
 # Python
 __pycache__/

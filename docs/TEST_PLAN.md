@@ -85,3 +85,20 @@ local environments, dependency trees, caches, and generated build artifacts.
   reason validation, permission denial, tenant-scoped queues, cross-company
   access rejection, transactional replacement, and the one-approved-device
   invariant.
+# Expanded release gates
+
+The API gate now covers registration/auth, invitations/RBAC, tenant organization, branches,
+effective transfers, shifts/overnight assignments, device replacement, approved-device GPS
+attendance/check-out, duplicate prevention, task/notification status, leave balance approval,
+tenant-protected file access, plan visibility, and real XLSX generation against PostgreSQL.
+
+Web acceptance runs ESLint, generated route types, strict TypeScript, all Vitest suites with one
+worker, and the optimized production build. Mobile acceptance runs Dart formatting, Flutter
+analysis with zero findings, all widget tests, a clean signed APK/AAB build with a real HTTPS API
+URL, package/resource verification, and physical-device regression. The release-build and physical
+device steps remain release-owner gates whenever the user explicitly postpones building or the USB
+device is not connected.
+
+Production acceptance additionally verifies Alembic head, the maintenance command, backup archive
+listing plus isolated restore, systemd working directories, Nginx configuration, live/ready health,
+TLS, secure cookies, cross-tenant 404 behavior, and authenticated Arabic/English smoke flows.

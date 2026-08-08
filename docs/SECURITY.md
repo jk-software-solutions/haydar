@@ -101,3 +101,15 @@ request/session metadata and before/after summaries.
 Firebase, Maps, email/SMS, object storage, signing and payment credentials are
 requested at their milestones. Unconfigured providers fail explicitly. No
 adapter may report a successful external operation it did not perform.
+# Operations security extension
+
+- Attendance accepts only an approved device installation ID and validates GPS/QR data server-side.
+- Protected files and exports never expose filesystem paths or public object URLs; every download is
+  tenant- and permission-scoped.
+- API responses add request IDs, content-type/frame/referrer/permissions headers, and rate-limit
+  headers. Nginx provides a second rate-limiting layer and TLS/HSTS at the edge.
+- Company-admin and platform-admin permissions are separate. Platform access is allowlisted by
+  environment email and support mode is explicit, expiring, bannered, and audited.
+- Secrets, `.env`, signing material, Firebase files, build output, uploads, and caches are ignored.
+  Logging records request metadata and audit actions, never passwords or bearer/refresh tokens.
+- Scheduled maintenance is idempotent for alerts and runs without accepting public HTTP triggers.

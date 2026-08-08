@@ -1,0 +1,39 @@
+# Company administrator guide
+
+## First setup
+
+Register the company owner, then complete the company settings. Create departments, branches,
+and shifts before inviting employees. Every branch needs coordinates, a timezone, and a geofence
+radius. Assign each attendance-enabled employee to an active branch and either an employee or
+branch shift.
+
+## Employees and devices
+
+Invite employees with the least-privileged role. The first Android installation registered by an
+employee becomes the approved device. A replacement device stays pending until an authorized
+manager reviews the reason; approval revokes the previous device. Do not share employee accounts.
+
+## Attendance
+
+Employees can check in and out through GPS or a current branch QR token. The server—not the
+phone—validates subscription, company/member status, device, assignment, schedule, token, and
+distance. Local fingerprint/face unlock is only an optional device confirmation.
+
+Managers may enter or correct attendance only with a reason. These changes retain old/new values
+in audit history. The five-minute maintenance job flags sessions left open more than two hours
+after scheduled end. Review `missing_checkout` and unauthorized early-departure records promptly.
+
+## Workforce operations
+
+- Assign tasks to one or more employees or an active branch, monitor list/Kanban status, extend due
+  dates, reassign, and review comments or evidence attachments.
+- Review permission and leave requests with a written comment where useful. Approved leave reduces
+  the employee's annual balance and affects attendance.
+- Review uploaded employee documents and act on in-app expiration alerts.
+- Generate filtered reports and download exports only from the authenticated company portal.
+
+## Security routine
+
+Review pending devices, manual attendance, platform support banners, role assignments, expired
+documents, and audit logs. Remove access when employment ends. Never send passwords, refresh
+tokens, signing keys, or exported employee data through unapproved channels.

@@ -39,6 +39,21 @@ class Permission(StrEnum):
     ASSIGNMENTS_MANAGE = "assignments:manage"
     SHIFTS_VIEW = "shifts:view"
     SHIFTS_MANAGE = "shifts:manage"
+    ATTENDANCE_VIEW = "attendance:view"
+    ATTENDANCE_MANAGE = "attendance:manage"
+    PERMISSIONS_VIEW = "permissions:view"
+    PERMISSIONS_MANAGE = "permissions:manage"
+    PRESENCE_MANAGE = "presence:manage"
+    TASKS_VIEW = "tasks:view"
+    TASKS_MANAGE = "tasks:manage"
+    LEAVE_VIEW = "leave:view"
+    LEAVE_MANAGE = "leave:manage"
+    DOCUMENTS_VIEW = "documents:view"
+    DOCUMENTS_MANAGE = "documents:manage"
+    REPORTS_VIEW = "reports:view"
+    REPORTS_EXPORT = "reports:export"
+    SUBSCRIPTION_VIEW = "subscription:view"
+    SUBSCRIPTION_MANAGE = "subscription:manage"
 
 
 @dataclass(frozen=True, slots=True)

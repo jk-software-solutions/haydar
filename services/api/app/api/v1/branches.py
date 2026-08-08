@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.auth import CurrentAuthSession
 from app.core.authorization import Permission, require_permission, tenant_context
 from app.core.errors import ProblemError
+from app.core.subscription_catalog import active_subscription, plan_limit
 from app.db.session import get_session
 from app.models.devices import AuditLog
 from app.models.identity import CompanyMembership
@@ -345,6 +346,26 @@ async def create_branch(
 ) -> BranchResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.BRANCHES_MANAGE)
+    subscription = await active_subscription(session, context.company_id)
+    branch_limit = plan_limit(subscription[1], "branches") if subscription else 0
+    branch_count = int(
+        await session.scalar(
+            select(func.count())
+            .select_from(Branch)
+            .where(
+                Branch.company_id == context.company_id,
+                Branch.is_active.is_(True),
+            )
+        )
+        or 0
+    )
+    if subscription is None or branch_count >= branch_limit:
+        raise ProblemError(
+            status=status.HTTP_403_FORBIDDEN,
+            code="subscription_branch_limit",
+            title="Branch limit reached",
+            detail="Upgrade or extend the subscription before creating another branch.",
+        )
     await ensure_unique_branch_code(session, context.company_id, payload.code)
     if not await tenant_membership_exists(
         session, context.company_id, payload.manager_membership_id

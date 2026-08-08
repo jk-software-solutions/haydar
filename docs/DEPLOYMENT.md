@@ -7,14 +7,14 @@ defaults locally to `http://127.0.0.1:8000/api/v1`. Deployment must set an
 internal HTTPS API URL. Web session cookies become Secure automatically in
 production and require HTTPS at the public edge.
 
-- Repository: `F:\my_projects\Hadir`
+- Repository: the current checkout resolved by `scripts/dev-env.ps1`
 - Database: existing native PostgreSQL 18 on `localhost:5432`
 - API: Python 3.12 virtual environment, one Uvicorn worker
 - Web: Node/pnpm process started only while web work is being tested
 - Mobile: Flutter process started only for a connected physical device
 - Docker and Android emulators are not used.
 
-Local scripts set caches and temporary paths to F: where practical. Start only
+Local scripts keep caches inside the ignored project cache directory. Start only
 the component required by the current task and stop child build/server processes
 after validation.
 
@@ -96,10 +96,12 @@ request.
 
 ## Android release
 
-Release signing values are requested at the release milestone and stored
-outside Git. Build an obfuscated AAB with split debug information, test Arabic
-and English on a physical Android device, then prepare Play Console metadata,
-privacy disclosures, screenshots and the submission checklist.
+Generate the upload key once with `scripts/generate-android-upload-key.ps1`; both
+key files are ignored and must be backed up securely. Use
+`scripts/build-android-release.ps1` with the final production HTTPS API URL.
+The script rejects placeholder/local URLs and builds signed APK/AAB artifacts
+after analysis and tests. Follow `docs/GOOGLE_PLAY_RELEASE.md` for Play metadata,
+privacy disclosures, screenshots, and physical-device acceptance.
 
 ## Backup and restore
 

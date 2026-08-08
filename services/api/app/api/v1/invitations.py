@@ -13,6 +13,7 @@ from app.api.v1.auth import AuthTokenResponse, CurrentAuthSession, issue_tokens
 from app.core.authorization import Permission, RoleCode, require_permission, tenant_context
 from app.core.errors import ProblemError
 from app.core.security import hash_password
+from app.core.subscription_catalog import active_subscription, plan_limit
 from app.db.session import get_session
 from app.models.identity import Company, CompanyMembership, Invitation, MembershipRole, User
 from app.models.organization import EmployeeProfile
@@ -85,6 +86,37 @@ async def create_invitation(
 ) -> CreatedInvitationResponse:
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.MEMBERS_CREATE)
+    subscription = await active_subscription(session, context.company_id)
+    employee_limit = plan_limit(subscription[1], "employees") if subscription else 0
+    active_count = int(
+        await session.scalar(
+            select(func.count())
+            .select_from(CompanyMembership)
+            .where(
+                CompanyMembership.company_id == context.company_id,
+                CompanyMembership.status == "active",
+            )
+        )
+        or 0
+    )
+    pending_count = int(
+        await session.scalar(
+            select(func.count())
+            .select_from(Invitation)
+            .where(
+                Invitation.company_id == context.company_id,
+                Invitation.status == "pending",
+            )
+        )
+        or 0
+    )
+    if subscription is None or active_count + pending_count >= employee_limit:
+        raise ProblemError(
+            status=status.HTTP_403_FORBIDDEN,
+            code="subscription_employee_limit",
+            title="Employee limit reached",
+            detail="Upgrade or extend the subscription before inviting another employee.",
+        )
     if payload.role_code not in INVITABLE_ROLES:
         raise ProblemError(
             status=status.HTTP_422_UNPROCESSABLE_ENTITY,

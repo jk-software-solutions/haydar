@@ -1,4 +1,5 @@
 from app.models.devices import AuditLog, Device, DeviceChangeRequest
+from app.models.files import StoredFile
 from app.models.identity import (
     Company,
     CompanyMembership,
@@ -19,8 +20,36 @@ from app.models.organization import (
     ShiftAssignment,
     ShiftException,
 )
+from app.models.platform import (
+    AttendanceLeaderboardSetting,
+    CompanySubscription,
+    Coupon,
+    CouponRedemption,
+    ExportJob,
+    PlatformAuditLog,
+    PlatformSetting,
+    SubscriptionPlan,
+    SupportSession,
+)
+from app.models.workforce import (
+    EmployeeDocument,
+    LeaveBalance,
+    LeaveRequest,
+    LeaveType,
+    Notification,
+    TaskAssignee,
+    TaskComment,
+    TaskStatusHistory,
+    WorkTask,
+)
 
 __all__ = [
+    "AttendanceEvent",
+    "AttendanceRecord",
+    "BranchQrToken",
+    "PermissionRequest",
+    "PresenceRecipient",
+    "PresenceRequest",
     "Company",
     "CompanyMembership",
     "Invitation",
@@ -33,6 +62,7 @@ __all__ = [
     "AuditLog",
     "Device",
     "DeviceChangeRequest",
+    "StoredFile",
     "EmployeeProfile",
     "Branch",
     "Department",
@@ -40,4 +70,30 @@ __all__ = [
     "Shift",
     "ShiftAssignment",
     "ShiftException",
+    "EmployeeDocument",
+    "LeaveBalance",
+    "LeaveRequest",
+    "LeaveType",
+    "Notification",
+    "TaskAssignee",
+    "TaskComment",
+    "TaskStatusHistory",
+    "WorkTask",
+    "AttendanceLeaderboardSetting",
+    "CompanySubscription",
+    "Coupon",
+    "CouponRedemption",
+    "ExportJob",
+    "PlatformAuditLog",
+    "PlatformSetting",
+    "SubscriptionPlan",
+    "SupportSession",
 ]
+from app.models.attendance import (
+    AttendanceEvent,
+    AttendanceRecord,
+    BranchQrToken,
+    PermissionRequest,
+    PresenceRecipient,
+    PresenceRequest,
+)

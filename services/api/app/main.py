@@ -8,7 +8,7 @@ from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
-from app.core.middleware import RequestIdMiddleware
+from app.core.middleware import RateLimitMiddleware, RequestIdMiddleware, SecurityHeadersMiddleware
 from app.db.session import dispose_engine
 
 settings = get_settings()
@@ -34,8 +34,20 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origin_list,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            "X-Installation-ID",
+            "X-Request-ID",
+        ],
     )
+    app.add_middleware(
+        RateLimitMiddleware,
+        general_limit=settings.rate_limit_per_minute,
+        auth_limit=settings.auth_rate_limit_per_minute,
+    )
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestIdMiddleware)
     register_error_handlers(app)
     app.include_router(api_router, prefix=settings.api_v1_prefix)

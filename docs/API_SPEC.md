@@ -181,3 +181,32 @@ Client-supplied distance, lateness or status fields are rejected.
 Platform routes require `SUPER_ADMIN`. Company support access requires a
 time-bounded support session with reason, target company and immutable audit
 events. Support context never changes the user into an unaudited company member.
+# Implemented operations API extension
+
+All routes below are under `/api/v1`, require a tenant bearer session unless noted, reject
+client-supplied tenant ownership, and return RFC 9457-style problem responses.
+
+- Attendance: `POST /attendance/check-in`, `POST /attendance/check-out`, `GET /attendance/me`,
+  `GET /attendance`, `POST /attendance/manual`, `PATCH /attendance/{id}`,
+  `POST /attendance/qr-tokens`, and `POST /attendance/reconcile`.
+- Permission requests: `POST/GET /permission-requests` and
+  `POST /permission-requests/{id}/review`.
+- Presence: `POST/GET /presence-requests` and `POST /presence-requests/{id}/respond`.
+- Tasks: `POST/GET /tasks`, `GET/PATCH /tasks/{id}`, `POST /tasks/{id}/status`, and
+  `POST/GET /tasks/{id}/comments`.
+- Leave: `POST/GET /leave/types`, `PUT/GET /leave/balances`, `POST/GET /leave/requests`, and
+  `POST /leave/requests/{id}/review`.
+- Documents and files: `POST/GET /documents`, `POST /documents/{id}/review`,
+  `POST /files`, and `GET /files/{id}`. Uploads are limited to 10 MiB, validated by media type,
+  subscription storage allowance, tenant, and employee ownership.
+- Notifications: `GET /notifications` and `POST /notifications/{id}/read`.
+- Reports: `GET /reports/overview`, `GET /reports/attendance`, leaderboard settings/list,
+  `POST/GET /reports/exports`, and `GET /reports/exports/{id}/download`.
+- Billing: public `GET /billing/plans`, tenant `GET /billing/subscription`, coupon validation,
+  and payment-provider capability status.
+- Platform: dashboard, company list/status/plan management, coupon management, support sessions,
+  settings, and audit access under `/platform`; access requires a configured platform-admin email.
+
+Attendance mutations additionally require `X-Installation-ID` for the currently approved device.
+GPS distance and QR expiry/branch checks occur on the server. Export and file downloads are resolved
+under the authenticated company and return 404 across tenant boundaries.

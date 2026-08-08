@@ -84,6 +84,16 @@ private network.
 - [Test plan](docs/TEST_PLAN.md)
 - [Deployment](docs/DEPLOYMENT.md)
 - [Assumptions and risks](docs/ASSUMPTIONS_AND_RISKS.md)
+- [Company administrator guide](docs/ADMIN_GUIDE.md)
+- [Platform owner guide](docs/SUPER_ADMIN_GUIDE.md)
+- [Database operations](docs/DATABASE_OPERATIONS.md)
+- [Google Play release](docs/GOOGLE_PLAY_RELEASE.md)
+- [Privacy policy template](docs/PRIVACY_POLICY.md)
+- [Support information](docs/SUPPORT.md)
+- [Known limitations](docs/KNOWN_LIMITATIONS.md)
+- [Future roadmap](docs/FUTURE_ROADMAP.md)
+- [Final handoff](docs/FINAL_HANDOFF.md)
+- [Production deployment bundle](deploy/README.md)
 
 The authoritative product scope is recorded in
 [`HADIR_CODEX_MASTER_PROMPT.md`](HADIR_CODEX_MASTER_PROMPT.md).

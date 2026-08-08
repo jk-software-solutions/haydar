@@ -1,0 +1,17 @@
+[Unit]
+Description=Run HADIR scheduled maintenance
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+User=hadir
+Group=hadir
+WorkingDirectory=/opt/hadir/current/services/api
+EnvironmentFile=/etc/hadir/api.env
+ExecStart=/opt/hadir/current/services/api/.venv/bin/hadir-maintenance
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/log/hadir
+UMask=0027

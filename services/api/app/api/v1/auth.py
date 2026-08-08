@@ -20,6 +20,7 @@ from app.core.security import (
     new_refresh_token,
     verify_password,
 )
+from app.core.subscription_catalog import create_trial_subscription
 from app.db.session import get_session
 from app.models.identity import (
     Company,
@@ -263,6 +264,7 @@ async def register_company(
     )
     session.add_all([company, user])
     await session.flush()
+    await create_trial_subscription(session, company)
     membership = CompanyMembership(
         company_id=company.id,
         user_id=user.id,

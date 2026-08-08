@@ -130,3 +130,20 @@ Alembic is the only schema-change mechanism. Migrations must be forward-safe,
 reviewed, tested against `haydar_test`, and documented with rollback or
 roll-forward guidance. Destructive changes require a verified backup and a
 separate maintenance plan.
+# Implemented workforce and platform model extension
+
+Revisions `20260808_0008` through `20260808_0012` add:
+
+- `attendance_records`, immutable-style `attendance_events`, `branch_qr_tokens`,
+  `permission_requests`, `presence_requests`, and `presence_recipients`;
+- `work_tasks`, assignees, comments, status history, notifications, leave types/balances/requests,
+  and employee documents;
+- subscription plans/company subscriptions, coupons/redemptions, export jobs, support sessions,
+  platform settings/audit logs, and attendance leaderboard privacy settings; and
+- tenant-protected `stored_files` with binary content, media type, size, and SHA-256.
+
+Tenant-owned foreign keys use `(company_id, id)` composites where references cross tables. Unique
+constraints prevent duplicate daily attendance, multiple open attendance sessions, overlapping
+assignments, duplicate task assignees, and repeated coupon redemption. Application queries still
+include explicit company criteria; database constraints are defense in depth rather than a
+replacement for authorization.

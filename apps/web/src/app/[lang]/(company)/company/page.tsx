@@ -8,6 +8,7 @@ import { BranchForm } from "./branch-form";
 import { CompanySettingsForm, type CompanySettings } from "./company-settings-form";
 import { EmployeeForm, type EditableEmployee } from "./employee-form";
 import { InvitationForm } from "./invitation-form";
+import { OperationsDashboard } from "./operations-dashboard";
 import { ShiftForm } from "./shift-form";
 
 type Invitation = {
@@ -164,6 +165,13 @@ export default async function CompanyPortal({
             </ul>
           )}
         </section>
+        <OperationsDashboard
+          locale={lang}
+          canManage={canManage}
+          employees={employeePayload.items}
+          branches={branchPayload.items}
+          shifts={shiftPayload.items}
+        />
         {canManage ? (
           <section className="portal-section">
             <h2>{ar ? "دعوات الموظفين" : "Employee invitations"}</h2>

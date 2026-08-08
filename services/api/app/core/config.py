@@ -29,10 +29,21 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     default_timezone: str = "Asia/Riyadh"
     log_level: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
+    platform_admin_emails: str = ""
+    rate_limit_per_minute: int = Field(default=120, ge=10, le=10000)
+    auth_rate_limit_per_minute: int = Field(default=20, ge=5, le=1000)
 
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def platform_admin_email_set(self) -> set[str]:
+        return {
+            email.strip().lower()
+            for email in self.platform_admin_emails.split(",")
+            if email.strip()
+        }
 
 
 @lru_cache
