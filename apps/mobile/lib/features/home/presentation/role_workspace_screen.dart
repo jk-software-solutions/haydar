@@ -8,6 +8,8 @@ import '../../auth/application/auth_controller.dart';
 import '../../attendance/presentation/attendance_screen.dart';
 import '../../devices/presentation/employee_device_gate.dart';
 import '../../notifications/presentation/notification_screen.dart';
+import '../../organization/presentation/group_management_screen.dart';
+import '../../organization/presentation/owner_access_screen.dart';
 import '../../requests/presentation/manager_approvals_screen.dart';
 import '../../requests/presentation/requests_screen.dart';
 import '../../tasks/presentation/tasks_screen.dart';
@@ -212,11 +214,23 @@ class _RoleWorkspaceScreenState extends ConsumerState<RoleWorkspaceScreen> {
     }
     if (!employeeExperience && selectedIndex == 4) {
       return _ManagementMoreView(
+        canManageAccess: session.roles.contains('OWNER'),
+        canManageGroups: session.can('departments:manage'),
         canManageInvitations: session.can('members:create'),
         canManageDevices: session.can('devices:manage'),
         canManageApprovals:
             session.can('permissions:manage') || session.can('leave:manage'),
         onInvitations: () => context.push('/app/invitations'),
+        onAccess: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => OwnerAccessScreen(session: session),
+          ),
+        ),
+        onGroups: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => GroupManagementScreen(session: session),
+          ),
+        ),
         onDevices: () => context.push('/app/device-requests'),
         onApprovals: () => Navigator.of(context).push(
           MaterialPageRoute<void>(
@@ -374,25 +388,37 @@ class _ProfileView extends StatelessWidget {
 
 class _ManagementMoreView extends StatelessWidget {
   const _ManagementMoreView({
+    required this.canManageAccess,
+    required this.canManageGroups,
     required this.canManageInvitations,
     required this.canManageDevices,
     required this.canManageApprovals,
     required this.onInvitations,
+    required this.onAccess,
+    required this.onGroups,
     required this.onDevices,
     required this.onApprovals,
   });
 
+  final bool canManageAccess;
+  final bool canManageGroups;
   final bool canManageInvitations;
   final bool canManageDevices;
   final bool canManageApprovals;
   final VoidCallback onInvitations;
+  final VoidCallback onAccess;
+  final VoidCallback onGroups;
   final VoidCallback onDevices;
   final VoidCallback onApprovals;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    if (!canManageInvitations && !canManageDevices && !canManageApprovals) {
+    if (!canManageAccess &&
+        !canManageGroups &&
+        !canManageInvitations &&
+        !canManageDevices &&
+        !canManageApprovals) {
       return Center(child: Text(l10n.permissionDenied));
     }
     return ListView(
@@ -400,6 +426,42 @@ class _ManagementMoreView extends StatelessWidget {
       children: <Widget>[
         Text(l10n.navMore, style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 16),
+        if (canManageAccess)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.admin_panel_settings_outlined),
+              title: Text(
+                Localizations.localeOf(context).languageCode == 'ar'
+                    ? 'الأدوار والصلاحيات'
+                    : 'Roles and access',
+              ),
+              subtitle: Text(
+                Localizations.localeOf(context).languageCode == 'ar'
+                    ? 'إدارة أدوار الأعضاء وصلاحياتهم ونطاق عملهم.'
+                    : 'Manage member roles, permission overrides, and scope.',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: onAccess,
+            ),
+          ),
+        if (canManageGroups)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.group_work_outlined),
+              title: Text(
+                Localizations.localeOf(context).languageCode == 'ar'
+                    ? 'المجموعات التشغيلية'
+                    : 'Operational groups',
+              ),
+              subtitle: Text(
+                Localizations.localeOf(context).languageCode == 'ar'
+                    ? 'إنشاء مجموعات العمل وتعيين أعضائها.'
+                    : 'Create work groups and assign their members.',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: onGroups,
+            ),
+          ),
         if (canManageApprovals)
           Card(
             child: ListTile(

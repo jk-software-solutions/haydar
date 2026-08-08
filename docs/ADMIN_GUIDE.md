@@ -46,6 +46,10 @@ approval.
 
 Operational-group membership is managed from the group section and affects scoped tasks, Proof of
 Presence, reports and manager visibility. Branch details can be edited with optimistic versioning.
+Company owners can open **Roles and access** from the Flutter More tab to edit member roles,
+allow/deny permission overrides, and branch/department/group scope. Actors with
+`departments:manage` can open **Operational groups** there to create, edit, activate/deactivate,
+and replace group membership.
 The branch editor only offers owner/manager-role members as the branch manager and supports multiple
 supervisor-role members. Saving either branch details or supervisors refreshes the shared branch
 version; reload after a concurrency warning before retrying.
