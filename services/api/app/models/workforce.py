@@ -2,6 +2,7 @@ from datetime import date, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Date,
     DateTime,
@@ -27,6 +28,11 @@ class WorkTask(Base):
             ["company_memberships.company_id", "company_memberships.id"],
             name="fk_work_tasks_company_creator",
         ),
+        ForeignKeyConstraint(
+            ["company_id", "completion_attachment_file_id"],
+            ["stored_files.company_id", "stored_files.id"],
+            name="fk_work_tasks_company_completion_attachment",
+        ),
         UniqueConstraint("company_id", "id", name="uq_work_tasks_company_id"),
         Index("ix_work_tasks_company_status_due", "company_id", "status", "due_at"),
     )
@@ -39,7 +45,7 @@ class WorkTask(Base):
     priority: Mapped[str] = mapped_column(String(24), default="normal", nullable=False)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(32), default="new", nullable=False)
-    completion_attachment_key: Mapped[str | None] = mapped_column(String(500))
+    completion_attachment_file_id: Mapped[UUID | None]
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
@@ -85,6 +91,11 @@ class TaskComment(Base):
             ["company_memberships.company_id", "company_memberships.id"],
             name="fk_task_comments_company_author",
         ),
+        ForeignKeyConstraint(
+            ["company_id", "attachment_file_id"],
+            ["stored_files.company_id", "stored_files.id"],
+            name="fk_task_comments_company_attachment",
+        ),
         Index("ix_task_comments_task_created", "task_id", "created_at"),
     )
 
@@ -93,7 +104,7 @@ class TaskComment(Base):
     task_id: Mapped[UUID] = mapped_column(nullable=False)
     author_membership_id: Mapped[UUID] = mapped_column(nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    attachment_key: Mapped[str | None] = mapped_column(String(500))
+    attachment_file_id: Mapped[UUID | None]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
@@ -132,6 +143,7 @@ class Notification(Base):
             name="fk_notifications_company_membership",
         ),
         Index("ix_notifications_member_unread", "company_id", "membership_id", "read_at"),
+        UniqueConstraint("company_id", "id", name="uq_notifications_company_id"),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -144,6 +156,94 @@ class Notification(Base):
     target_id: Mapped[UUID | None]
     urgent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class NotificationPreference(Base):
+    __tablename__ = "notification_preferences"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_notification_preferences_company_member",
+        ),
+        UniqueConstraint("company_id", "membership_id", name="uq_notification_preferences_member"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    membership_id: Mapped[UUID] = mapped_column(nullable=False)
+    in_app_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    push_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    email_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    muted_kinds: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    quiet_hours_start: Mapped[str | None] = mapped_column(String(5))
+    quiet_hours_end: Mapped[str | None] = mapped_column(String(5))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class PushDeviceToken(Base):
+    __tablename__ = "push_device_tokens"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_push_device_tokens_company_member",
+        ),
+        UniqueConstraint("token_hash", name="uq_push_device_tokens_hash"),
+        UniqueConstraint("company_id", "id", name="uq_push_device_tokens_company_id"),
+        Index("ix_push_device_tokens_member_active", "company_id", "membership_id", "is_active"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    membership_id: Mapped[UUID] = mapped_column(nullable=False)
+    platform: Mapped[str] = mapped_column(String(24), nullable=False)
+    token: Mapped[str] = mapped_column(String(4096), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    app_version: Mapped[str | None] = mapped_column(String(40))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class NotificationDelivery(Base):
+    __tablename__ = "notification_deliveries"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "membership_id"],
+            ["company_memberships.company_id", "company_memberships.id"],
+            name="fk_notification_deliveries_company_member",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "notification_id"],
+            ["notifications.company_id", "notifications.id"],
+            name="fk_notification_deliveries_company_notification",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "push_token_id"],
+            ["push_device_tokens.company_id", "push_device_tokens.id"],
+            name="fk_notification_deliveries_company_token",
+        ),
+        UniqueConstraint(
+            "notification_id", "push_token_id", name="uq_notification_deliveries_target"
+        ),
+        Index("ix_notification_deliveries_status_retry", "status", "next_attempt_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    membership_id: Mapped[UUID] = mapped_column(nullable=False)
+    notification_id: Mapped[UUID] = mapped_column(nullable=False)
+    push_token_id: Mapped[UUID] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    provider_message_id: Mapped[str | None] = mapped_column(String(500))
+    last_error: Mapped[str | None] = mapped_column(String(1000))
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
@@ -213,6 +313,11 @@ class LeaveRequest(Base):
             ["company_memberships.company_id", "company_memberships.id"],
             name="fk_leave_requests_company_reviewer",
         ),
+        ForeignKeyConstraint(
+            ["company_id", "attachment_file_id"],
+            ["stored_files.company_id", "stored_files.id"],
+            name="fk_leave_requests_company_attachment",
+        ),
         Index("ix_leave_requests_company_status", "company_id", "status"),
     )
 
@@ -224,7 +329,7 @@ class LeaveRequest(Base):
     ends_on: Mapped[date] = mapped_column(Date, nullable=False)
     days: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
-    attachment_key: Mapped[str | None] = mapped_column(String(500))
+    attachment_file_id: Mapped[UUID | None]
     status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
     reviewed_by_membership_id: Mapped[UUID | None]
     review_comment: Mapped[str | None] = mapped_column(Text)
@@ -243,6 +348,11 @@ class EmployeeDocument(Base):
             ["company_memberships.company_id", "company_memberships.id"],
             name="fk_employee_documents_company_membership",
         ),
+        ForeignKeyConstraint(
+            ["company_id", "attachment_file_id"],
+            ["stored_files.company_id", "stored_files.id"],
+            name="fk_employee_documents_company_attachment",
+        ),
         Index("ix_employee_documents_company_expiry", "company_id", "expires_on"),
     )
 
@@ -254,7 +364,7 @@ class EmployeeDocument(Base):
     document_number: Mapped[str | None] = mapped_column(String(120))
     issued_on: Mapped[date | None] = mapped_column(Date)
     expires_on: Mapped[date | None] = mapped_column(Date)
-    attachment_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    attachment_file_id: Mapped[UUID] = mapped_column(nullable=False)
     reminder_days: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     review_status: Mapped[str] = mapped_column(String(24), default="pending_review", nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)

@@ -32,6 +32,7 @@ from app.models.identity import (
 )
 from app.models.organization import Branch, EmployeeGroupMembership, EmployeeProfile
 from app.models.workforce import Notification
+from app.services.idempotency import IdempotencyKey, begin_idempotency, complete_idempotency
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_session)]
@@ -464,8 +465,14 @@ async def review_geofence_exit_event(
     payload: GeofenceReviewRequest,
     auth_session: CurrentAuthSession,
     session: DatabaseSession,
+    idempotency_key: IdempotencyKey = None,
 ) -> GeofenceExitResponse:
     context = tenant_context(auth_session)
+    idempotency, replay = await begin_idempotency(
+        session, context, f"geofence.review:{event_id}", idempotency_key, payload
+    )
+    if replay is not None:
+        return GeofenceExitResponse.model_validate(replay)
     await require_permission(session, context, Permission.GEOFENCE_EXITS_MANAGE)
     item = await session.scalar(
         select(GeofenceExitEvent)
@@ -506,6 +513,7 @@ async def review_geofence_exit_event(
             details={"before": before, "decision": payload.decision},
         )
     )
+    result = response(item)
+    complete_idempotency(idempotency, result, status.HTTP_200_OK)
     await session.commit()
-    await session.refresh(item)
-    return response(item)
+    return result

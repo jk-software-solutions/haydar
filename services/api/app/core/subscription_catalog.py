@@ -20,7 +20,7 @@ BUILTIN_PLANS: tuple[dict[str, object], ...] = (
             "gps": True,
             "qr": True,
             "tasks": True,
-            "documents": False,
+            "documents": True,
             "reports": "basic",
         },
         "support_level": "community",

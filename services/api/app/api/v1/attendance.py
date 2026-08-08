@@ -48,6 +48,8 @@ from app.models.organization import (
     ShiftException,
 )
 from app.models.workforce import LeaveRequest, Notification
+from app.services.file_access import require_owned_attachment
+from app.services.idempotency import IdempotencyKey, begin_idempotency, complete_idempotency
 
 router = APIRouter()
 permissions_router = APIRouter()
@@ -103,7 +105,7 @@ class ManualAttendanceRequest(BaseModel):
     checked_in_at: datetime
     checked_out_at: datetime | None = None
     reason: str = Field(min_length=5, max_length=2000)
-    attachment_key: str | None = Field(default=None, max_length=500)
+    attachment_file_id: UUID | None = None
 
     @model_validator(mode="after")
     def validate_times(self) -> "ManualAttendanceRequest":
@@ -120,7 +122,7 @@ class CorrectAttendanceRequest(BaseModel):
     checked_out_at: datetime | None = None
     status: str | None = Field(default=None, max_length=32)
     reason: str = Field(min_length=5, max_length=2000)
-    attachment_key: str | None = Field(default=None, max_length=500)
+    attachment_file_id: UUID | None = None
 
 
 class CreateQrRequest(BaseModel):
@@ -141,7 +143,7 @@ class PermissionCreateRequest(BaseModel):
     starts_at: datetime
     ends_at: datetime
     reason: str = Field(min_length=3, max_length=2000)
-    attachment_key: str | None = Field(default=None, max_length=500)
+    attachment_file_id: UUID | None = None
 
     @model_validator(mode="after")
     def validate_window(self) -> "PermissionCreateRequest":
@@ -164,7 +166,7 @@ class PermissionResponse(BaseModel):
     starts_at: datetime
     ends_at: datetime
     reason: str
-    attachment_key: str | None
+    attachment_file_id: UUID | None
     status: str
     review_comment: str | None
     reviewed_at: datetime | None
@@ -491,8 +493,14 @@ async def check_in(
     auth_session: CurrentAuthSession,
     session: DatabaseSession,
     installation_id: InstallationId = None,
+    idempotency_key: IdempotencyKey = None,
 ) -> AttendanceRecordResponse:
     context = tenant_context(auth_session)
+    idempotency, replay = await begin_idempotency(
+        session, context, "attendance.check_in", idempotency_key, payload
+    )
+    if replay is not None:
+        return AttendanceRecordResponse.model_validate(replay)
     device = await approved_device(session, context, installation_id)
     now = datetime.now(UTC)
     branch, shift, work_date, scheduled_start, scheduled_end = await active_branch_and_shift(
@@ -552,9 +560,10 @@ async def check_in(
             biometric_confirmed=payload.biometric_confirmed,
         )
     )
+    result = record_response(record)
+    complete_idempotency(idempotency, result, status.HTTP_201_CREATED)
     await session.commit()
-    await session.refresh(record)
-    return record_response(record)
+    return result
 
 
 @router.post("/check-out", response_model=AttendanceRecordResponse)
@@ -563,8 +572,14 @@ async def check_out(
     auth_session: CurrentAuthSession,
     session: DatabaseSession,
     installation_id: InstallationId = None,
+    idempotency_key: IdempotencyKey = None,
 ) -> AttendanceRecordResponse:
     context = tenant_context(auth_session)
+    idempotency, replay = await begin_idempotency(
+        session, context, "attendance.check_out", idempotency_key, payload
+    )
+    if replay is not None:
+        return AttendanceRecordResponse.model_validate(replay)
     device = await approved_device(session, context, installation_id)
     now = datetime.now(UTC)
     record = await session.scalar(
@@ -630,9 +645,10 @@ async def check_out(
             details={"permission_id": str(permission) if permission else ""},
         )
     )
+    result = record_response(record)
+    complete_idempotency(idempotency, result, status.HTTP_200_OK)
     await session.commit()
-    await session.refresh(record)
-    return record_response(record)
+    return result
 
 
 @router.get("/me", response_model=list[AttendanceRecordResponse])
@@ -857,6 +873,7 @@ async def create_manual_attendance(
     branch, shift = await validate_manual_targets(
         session, context, payload.membership_id, payload.branch_id, payload.shift_id
     )
+    await require_owned_attachment(session, context, payload.attachment_file_id)
     zone = ZoneInfo(branch.timezone)
     start = datetime.combine(payload.work_date, shift.start_time, zone).astimezone(UTC)
     end_date = payload.work_date + timedelta(days=1) if shift.is_overnight else payload.work_date
@@ -894,7 +911,7 @@ async def create_manual_attendance(
                 method="manual",
                 occurred_at=datetime.now(UTC),
                 reason=payload.reason,
-                details={"attachment_key": payload.attachment_key or ""},
+                attachment_file_id=payload.attachment_file_id,
             ),
             AuditLog(
                 company_id=context.company_id,
@@ -933,6 +950,7 @@ async def correct_attendance(
             detail="The record does not exist in this company.",
         )
     await require_membership_scope(session, context, record.membership_id)
+    await require_owned_attachment(session, context, payload.attachment_file_id)
     if record.version != payload.version:
         raise ProblemError(
             status=409,
@@ -977,10 +995,10 @@ async def correct_attendance(
                 method="manual",
                 occurred_at=datetime.now(UTC),
                 reason=payload.reason,
+                attachment_file_id=payload.attachment_file_id,
                 details={
                     "before": before,
                     "after": after,
-                    "attachment_key": payload.attachment_key or "",
                 },
             ),
             AuditLog(
@@ -1043,6 +1061,7 @@ async def create_permission_request(
     session: DatabaseSession,
 ) -> PermissionResponse:
     context = tenant_context(auth_session)
+    await require_owned_attachment(session, context, payload.attachment_file_id)
     item = PermissionRequest(
         company_id=context.company_id, membership_id=context.membership.id, **payload.model_dump()
     )
@@ -1107,8 +1126,18 @@ async def review_permission_request(
     payload: PermissionReviewRequest,
     auth_session: CurrentAuthSession,
     session: DatabaseSession,
+    idempotency_key: IdempotencyKey = None,
 ) -> PermissionResponse:
     context = tenant_context(auth_session)
+    idempotency, replay = await begin_idempotency(
+        session,
+        context,
+        f"permission.review:{request_id}",
+        idempotency_key,
+        payload,
+    )
+    if replay is not None:
+        return PermissionResponse.model_validate(replay)
     await require_permission(session, context, Permission.PERMISSIONS_MANAGE)
     item = await session.scalar(
         select(PermissionRequest)
@@ -1141,9 +1170,10 @@ async def review_permission_request(
             details={"comment": payload.comment or ""},
         )
     )
+    result = permission_response(item)
+    complete_idempotency(idempotency, result, status.HTTP_200_OK)
     await session.commit()
-    await session.refresh(item)
-    return permission_response(item)
+    return result
 
 
 @presence_router.post("", response_model=list[PresenceResponse], status_code=201)

@@ -1,17 +1,32 @@
 from hashlib import sha256
-from typing import Annotated
+from typing import Annotated, Any
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Response, UploadFile, status
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import CurrentAuthSession
+from app.core.authorization import (
+    Permission,
+    effective_permission_codes,
+    tenant_context,
+    visible_membership_ids,
+)
 from app.core.errors import ProblemError
 from app.core.subscription_catalog import active_subscription, plan_limit
 from app.db.session import get_session
+from app.models.attendance import AttendanceEvent, AttendanceRecord, PermissionRequest
 from app.models.files import StoredFile
+from app.models.workforce import (
+    EmployeeDocument,
+    LeaveRequest,
+    TaskAssignee,
+    TaskComment,
+    WorkTask,
+)
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_session)]
@@ -33,6 +48,155 @@ class FileResponse(BaseModel):
     content_type: str
     size_bytes: int
     sha256: str
+
+
+async def can_download_linked_file(
+    session: AsyncSession,
+    auth_session: CurrentAuthSession,
+    file_id: UUID,
+) -> bool:
+    context = tenant_context(auth_session)
+    member_id = context.membership.id
+    personal_references = (
+        select(PermissionRequest.id).where(
+            PermissionRequest.company_id == context.company_id,
+            PermissionRequest.membership_id == member_id,
+            PermissionRequest.attachment_file_id == file_id,
+        ),
+        select(LeaveRequest.id).where(
+            LeaveRequest.company_id == context.company_id,
+            LeaveRequest.membership_id == member_id,
+            LeaveRequest.attachment_file_id == file_id,
+        ),
+        select(EmployeeDocument.id).where(
+            EmployeeDocument.company_id == context.company_id,
+            EmployeeDocument.membership_id == member_id,
+            EmployeeDocument.attachment_file_id == file_id,
+        ),
+        select(AttendanceEvent.id)
+        .join(
+            AttendanceRecord,
+            (AttendanceRecord.company_id == AttendanceEvent.company_id)
+            & (AttendanceRecord.id == AttendanceEvent.record_id),
+        )
+        .where(
+            AttendanceEvent.company_id == context.company_id,
+            AttendanceEvent.attachment_file_id == file_id,
+            AttendanceRecord.membership_id == member_id,
+        ),
+        select(WorkTask.id)
+        .outerjoin(
+            TaskAssignee,
+            (TaskAssignee.company_id == WorkTask.company_id)
+            & (TaskAssignee.task_id == WorkTask.id),
+        )
+        .where(
+            WorkTask.company_id == context.company_id,
+            WorkTask.completion_attachment_file_id == file_id,
+            or_(
+                WorkTask.created_by_membership_id == member_id,
+                TaskAssignee.membership_id == member_id,
+            ),
+        ),
+        select(TaskComment.id)
+        .join(
+            WorkTask,
+            (WorkTask.company_id == TaskComment.company_id) & (WorkTask.id == TaskComment.task_id),
+        )
+        .outerjoin(
+            TaskAssignee,
+            (TaskAssignee.company_id == WorkTask.company_id)
+            & (TaskAssignee.task_id == WorkTask.id),
+        )
+        .where(
+            TaskComment.company_id == context.company_id,
+            TaskComment.attachment_file_id == file_id,
+            or_(
+                WorkTask.created_by_membership_id == member_id,
+                TaskAssignee.membership_id == member_id,
+            ),
+        ),
+    )
+    for query in personal_references:
+        if await session.scalar(query.limit(1)) is not None:
+            return True
+
+    permissions = await effective_permission_codes(
+        session, context.company_id, context.membership.id
+    )
+    visible = await visible_membership_ids(session, context)
+    scoped_members = visible if visible is not None else None
+
+    async def referenced_for_members(query: Any) -> bool:
+        return await session.scalar(query.limit(1)) is not None
+
+    if Permission.PERMISSIONS_VIEW.value in permissions:
+        query = select(PermissionRequest.id).where(
+            PermissionRequest.company_id == context.company_id,
+            PermissionRequest.attachment_file_id == file_id,
+        )
+        if scoped_members is not None:
+            query = query.where(PermissionRequest.membership_id.in_(scoped_members))
+        if await referenced_for_members(query):
+            return True
+    if Permission.LEAVE_VIEW.value in permissions:
+        query = select(LeaveRequest.id).where(
+            LeaveRequest.company_id == context.company_id,
+            LeaveRequest.attachment_file_id == file_id,
+        )
+        if scoped_members is not None:
+            query = query.where(LeaveRequest.membership_id.in_(scoped_members))
+        if await referenced_for_members(query):
+            return True
+    if Permission.DOCUMENTS_VIEW.value in permissions:
+        query = select(EmployeeDocument.id).where(
+            EmployeeDocument.company_id == context.company_id,
+            EmployeeDocument.attachment_file_id == file_id,
+        )
+        if scoped_members is not None:
+            query = query.where(EmployeeDocument.membership_id.in_(scoped_members))
+        if await referenced_for_members(query):
+            return True
+    if Permission.ATTENDANCE_VIEW.value in permissions:
+        query = (
+            select(AttendanceEvent.id)
+            .join(
+                AttendanceRecord,
+                (AttendanceRecord.company_id == AttendanceEvent.company_id)
+                & (AttendanceRecord.id == AttendanceEvent.record_id),
+            )
+            .where(
+                AttendanceEvent.company_id == context.company_id,
+                AttendanceEvent.attachment_file_id == file_id,
+            )
+        )
+        if scoped_members is not None:
+            query = query.where(AttendanceRecord.membership_id.in_(scoped_members))
+        if await referenced_for_members(query):
+            return True
+    if Permission.TASKS_VIEW.value in permissions:
+        task_ids = (
+            select(TaskComment.task_id)
+            .where(
+                TaskComment.company_id == context.company_id,
+                TaskComment.attachment_file_id == file_id,
+            )
+            .union(
+                select(WorkTask.id).where(
+                    WorkTask.company_id == context.company_id,
+                    WorkTask.completion_attachment_file_id == file_id,
+                )
+            )
+        )
+        query = select(TaskAssignee.id).where(
+            TaskAssignee.company_id == context.company_id,
+            TaskAssignee.task_id.in_(task_ids),
+        )
+        if scoped_members is not None:
+            query = query.where(TaskAssignee.membership_id.in_(scoped_members))
+        if await referenced_for_members(query):
+            return True
+    return False
 
 
 @router.post("", response_model=FileResponse, status_code=201)
@@ -119,18 +283,23 @@ async def download_file(
             title="File not found",
             detail="The file does not exist in this company.",
         )
-    if membership.role_code == "EMPLOYEE" and item.uploaded_by_membership_id != membership.id:
+    if item.uploaded_by_membership_id != membership.id and not await can_download_linked_file(
+        session, auth_session, item.id
+    ):
         raise ProblemError(
             status=403,
             code="file_access_denied",
             title="File access denied",
-            detail="Employees can only download files they uploaded.",
+            detail="The file is not linked to a resource visible to this member.",
         )
     return Response(
         content=item.content,
         media_type=item.content_type,
         headers={
-            "Content-Disposition": f'attachment; filename="{item.original_filename}"',
+            "Content-Disposition": (
+                f"attachment; filename*=UTF-8''{quote(item.original_filename, safe='')}"
+            ),
             "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
         },
     )

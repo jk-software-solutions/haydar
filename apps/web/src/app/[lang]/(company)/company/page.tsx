@@ -9,7 +9,10 @@ import { CompanySettingsForm, type CompanySettings } from "./company-settings-fo
 import { EmployeeForm, type EditableEmployee } from "./employee-form";
 import { InvitationForm } from "./invitation-form";
 import { MemberAccessForm, type MemberAccess } from "./member-access-form";
-import { reviewGeofenceExitAction } from "./operations-actions";
+import {
+  markAllNotificationsReadAction,
+  reviewGeofenceExitAction,
+} from "./operations-actions";
 import { OperationsDashboard } from "./operations-dashboard";
 import { ShiftForm } from "./shift-form";
 
@@ -62,6 +65,16 @@ type GeofenceExit = {
   review_comment: string | null;
   version: number;
 };
+type Notification = {
+  id: string;
+  title: string;
+  body: string;
+  kind: string;
+  deep_link: string;
+  urgent: boolean;
+  read_at: string | null;
+  created_at: string;
+};
 
 export default async function CompanyPortal({
   params,
@@ -93,6 +106,7 @@ export default async function CompanyPortal({
     permissionResponse,
     accessResponse,
     geofenceResponse,
+    notificationsResponse,
   ] = await Promise.all([
     canManage ? authorizedApiFetch("/invitations") : Promise.resolve(null),
     authorizedApiFetch("/employees?page_size=100"),
@@ -106,6 +120,7 @@ export default async function CompanyPortal({
     canReviewGeofence
       ? authorizedApiFetch("/geofence-exit-events")
       : Promise.resolve(null),
+    authorizedApiFetch("/notifications"),
   ]);
   const invitationPayload: { items: Invitation[] } = invitationResponse?.ok
     ? ((await invitationResponse.json()) as { items: Invitation[] })
@@ -136,6 +151,9 @@ export default async function CompanyPortal({
     : [];
   const geofenceEvents: GeofenceExit[] = geofenceResponse?.ok
     ? ((await geofenceResponse.json()) as GeofenceExit[])
+    : [];
+  const notifications: Notification[] = notificationsResponse.ok
+    ? ((await notificationsResponse.json()) as Notification[])
     : [];
   const accessByMember = new Map(accessItems.map((item) => [item.membership_id, item]));
   const signOut = logoutAction.bind(null, lang);
@@ -237,6 +255,32 @@ export default async function CompanyPortal({
           branches={branchPayload.items}
           shifts={shiftPayload.items}
         />
+        <section className="portal-section">
+          <div className="portal-header">
+            <div>
+              <h2>{ar ? "الإشعارات" : "Notifications"}</h2>
+              <p>{ar ? "تنبيهات العمل وروابطها المباشرة." : "Work alerts with authorized deep links."}</p>
+            </div>
+            {notifications.some((item) => item.read_at === null) && (
+              <form action={markAllNotificationsReadAction.bind(null, lang)}>
+                <button type="submit">{ar ? "قراءة الكل" : "Read all"}</button>
+              </form>
+            )}
+          </div>
+          {notifications.length === 0 ? (
+            <p>{ar ? "لا توجد إشعارات بعد." : "No notifications yet."}</p>
+          ) : (
+            <ul className="invitation-list">
+              {notifications.map((item) => (
+                <li key={item.id}>
+                  <strong>{item.urgent ? "! " : ""}{item.title}</strong>
+                  <span>{item.body}</span>
+                  <span>{new Date(item.created_at).toLocaleString(lang)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
         {canReviewGeofence && (
           <section className="portal-section">
             <h2>{ar ? "مراجعة مغادرة النطاق" : "Geofence exit review"}</h2>

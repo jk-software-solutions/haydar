@@ -19,6 +19,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen>
   List<RequestItem> _permissions = <RequestItem>[];
   List<RequestItem> _leaves = <RequestItem>[];
   List<LeaveTypeItem> _leaveTypes = <LeaveTypeItem>[];
+  List<LeaveBalanceItem> _leaveBalances = <LeaveBalanceItem>[];
   bool _loading = true;
   String? _error;
   bool get _ar => Localizations.localeOf(context).languageCode == 'ar';
@@ -43,12 +44,14 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen>
         api.permissions(widget.session),
         api.leaves(widget.session),
         api.leaveTypes(widget.session),
+        api.leaveBalances(widget.session),
       ]);
       if (mounted) {
         setState(() {
           _permissions = values[0] as List<RequestItem>;
           _leaves = values[1] as List<RequestItem>;
           _leaveTypes = values[2] as List<LeaveTypeItem>;
+          _leaveBalances = values[3] as List<LeaveBalanceItem>;
           _error = null;
         });
       }
@@ -258,6 +261,65 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen>
     ),
   );
 
+  String _leaveTypeName(String id) =>
+      _leaveTypes
+          .where((item) => item.id == id)
+          .map((item) => item.name)
+          .firstOrNull ??
+      id;
+
+  Widget _leaveList() => RefreshIndicator(
+    onRefresh: _refresh,
+    child: ListView(
+      padding: const EdgeInsets.all(16),
+      children: <Widget>[
+        Text(
+          _ar ? 'أرصدة الإجازات' : 'Leave balances',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 8),
+        if (_leaveBalances.isEmpty)
+          Text(_ar ? 'لا توجد أرصدة مخصصة.' : 'No balances allocated.'),
+        ..._leaveBalances.map(
+          (balance) => Card(
+            child: ListTile(
+              title: Text(
+                '${_leaveTypeName(balance.leaveTypeId)} · ${balance.year}',
+              ),
+              subtitle: Text(
+                '${_ar ? 'الإجمالي' : 'Total'}: ${balance.allocatedDays} · '
+                '${_ar ? 'المستخدم' : 'Used'}: ${balance.usedDays}',
+              ),
+              trailing: Chip(
+                label: Text(
+                  '${_ar ? 'المتبقي' : 'Remaining'} ${balance.remainingDays}',
+                ),
+              ),
+            ),
+          ),
+        ),
+        const Divider(height: 32),
+        if (_leaves.isEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(_ar ? 'لا توجد طلبات.' : 'No requests.'),
+            ),
+          ),
+        ..._leaves.map(
+          (item) => Card(
+            child: ListTile(
+              title: Text(item.type),
+              subtitle: Text('${item.from} – ${item.to}\n${item.reason}'),
+              isThreeLine: true,
+              trailing: Chip(label: Text(item.status)),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
@@ -281,7 +343,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen>
             controller: _tabs,
             children: <Widget>[
               _list(_permissions),
-              _list(_leaves),
+              _leaveList(),
               ListView(
                 padding: const EdgeInsets.all(24),
                 children: <Widget>[

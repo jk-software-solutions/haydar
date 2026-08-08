@@ -140,6 +140,8 @@ async def validate_coupon(
         or plan is None
         or redeemed is not None
         or (coupon.max_redemptions is not None and coupon.redeemed_count >= coupon.max_redemptions)
+        or (coupon.plan_id is not None and coupon.plan_id != payload.plan_id)
+        or (coupon.billing_cycle is not None and coupon.billing_cycle != payload.billing_cycle)
     ):
         raise ProblemError(
             status=status.HTTP_404_NOT_FOUND,

@@ -101,6 +101,11 @@ class AttendanceEvent(Base):
             ["company_memberships.company_id", "company_memberships.id"],
             name="fk_attendance_events_company_actor",
         ),
+        ForeignKeyConstraint(
+            ["company_id", "attachment_file_id"],
+            ["stored_files.company_id", "stored_files.id"],
+            name="fk_attendance_events_company_attachment",
+        ),
         Index("ix_attendance_events_record_created", "record_id", "created_at"),
     )
 
@@ -117,6 +122,7 @@ class AttendanceEvent(Base):
     distance_m: Mapped[int | None] = mapped_column(Integer)
     biometric_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)
+    attachment_file_id: Mapped[UUID | None]
     details: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
@@ -188,6 +194,11 @@ class PermissionRequest(Base):
             ["company_memberships.company_id", "company_memberships.id"],
             name="fk_permission_requests_company_reviewer",
         ),
+        ForeignKeyConstraint(
+            ["company_id", "attachment_file_id"],
+            ["stored_files.company_id", "stored_files.id"],
+            name="fk_permission_requests_company_attachment",
+        ),
         Index("ix_permission_requests_company_status", "company_id", "status"),
         UniqueConstraint("company_id", "id", name="uq_permission_requests_company_id"),
     )
@@ -199,7 +210,7 @@ class PermissionRequest(Base):
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
-    attachment_key: Mapped[str | None] = mapped_column(String(500))
+    attachment_file_id: Mapped[UUID | None]
     status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
     reviewed_by_membership_id: Mapped[UUID | None]
     review_comment: Mapped[str | None] = mapped_column(Text)

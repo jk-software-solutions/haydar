@@ -34,6 +34,7 @@ class SubscriptionPlan(Base):
     features: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
     support_level: Mapped[str] = mapped_column(String(40), default="standard", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
@@ -75,6 +76,8 @@ class Coupon(Base):
     code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     discount_type: Mapped[str] = mapped_column(String(16), nullable=False)
     discount_value: Mapped[int] = mapped_column(Integer, nullable=False)
+    plan_id: Mapped[UUID | None] = mapped_column(ForeignKey("subscription_plans.id"))
+    billing_cycle: Mapped[str | None] = mapped_column(String(16))
     max_redemptions: Mapped[int | None] = mapped_column(Integer)
     redeemed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -7,8 +7,9 @@ import '../../auth/application/auth_api.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../attendance/presentation/attendance_screen.dart';
 import '../../devices/presentation/employee_device_gate.dart';
-import '../../requests/presentation/requests_screen.dart';
+import '../../notifications/presentation/notification_screen.dart';
 import '../../requests/presentation/manager_approvals_screen.dart';
+import '../../requests/presentation/requests_screen.dart';
 import '../../tasks/presentation/tasks_screen.dart';
 import '../../team/presentation/team_screen.dart';
 
@@ -67,6 +68,19 @@ class _RoleWorkspaceScreenState extends ConsumerState<RoleWorkspaceScreen> {
       appBar: AppBar(
         title: Text(_workspaceTitle(l10n, primaryRole)),
         actions: <Widget>[
+          IconButton(
+            tooltip: 'Notifications',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => NotificationScreen(
+                  session: session,
+                  onOpenDeepLink: (link) =>
+                      _openNotificationLink(link, employeeExperience, session),
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.notifications_outlined),
+          ),
           IconButton(
             tooltip: l10n.logoutButton,
             onPressed: authState.isSubmitting
@@ -227,6 +241,28 @@ class _RoleWorkspaceScreenState extends ConsumerState<RoleWorkspaceScreen> {
             l10n.navMore,
           ][selectedIndex];
     return _ScheduledFeatureView(title: title);
+  }
+
+  void _openNotificationLink(
+    String link,
+    bool employeeExperience,
+    AuthSession session,
+  ) {
+    if (link.startsWith('/app/tasks')) {
+      setState(() => _selectedIndex = employeeExperience ? 2 : 3);
+    } else if (link.startsWith('/app/attendance')) {
+      setState(() => _selectedIndex = employeeExperience ? 1 : 2);
+    } else if (link.startsWith('/app/requests')) {
+      if (employeeExperience) {
+        setState(() => _selectedIndex = 3);
+      } else {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ManagerApprovalsScreen(session: session),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {

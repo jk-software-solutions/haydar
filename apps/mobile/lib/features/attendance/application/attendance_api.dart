@@ -18,12 +18,20 @@ class AttendanceApi {
   final Dio dio;
   final InstallationIdentity installationIdentity;
 
-  Options _auth(AuthSession session, {String? installationId}) => Options(
+  Options _auth(
+    AuthSession session, {
+    String? installationId,
+    String? idempotencyKey,
+  }) => Options(
     headers: <String, String>{
       'Authorization': 'Bearer ${session.accessToken}',
       'X-Installation-ID': ?installationId,
+      'Idempotency-Key': ?idempotencyKey,
     },
   );
+
+  String _newIdempotencyKey() =>
+      'mobile-${DateTime.now().toUtc().microsecondsSinceEpoch}';
 
   Future<List<AttendanceRecord>> list(
     AuthSession session, {
@@ -151,7 +159,7 @@ class AttendanceApi {
         'decision': decision,
         'comment': comment,
       },
-      options: _auth(session),
+      options: _auth(session, idempotencyKey: _newIdempotencyKey()),
     );
     return GeofenceExitEvent.fromJson(response.data ?? <String, dynamic>{});
   }
@@ -175,7 +183,11 @@ class AttendanceApi {
         'biometric_confirmed': biometricConfirmed,
         'qr_token': ?qrToken,
       },
-      options: _auth(session, installationId: installationId),
+      options: _auth(
+        session,
+        installationId: installationId,
+        idempotencyKey: _newIdempotencyKey(),
+      ),
     );
     return AttendanceRecord.fromJson(response.data ?? <String, dynamic>{});
   }

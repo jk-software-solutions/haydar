@@ -1,10 +1,11 @@
 from datetime import UTC, date, datetime, timedelta
+from hashlib import sha256
 from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import CurrentAuthSession
@@ -31,11 +32,16 @@ from app.models.workforce import (
     LeaveRequest,
     LeaveType,
     Notification,
+    NotificationPreference,
+    PushDeviceToken,
     TaskAssignee,
     TaskComment,
     TaskStatusHistory,
     WorkTask,
 )
+from app.services.file_access import require_owned_attachment
+from app.services.idempotency import IdempotencyKey, begin_idempotency, complete_idempotency
+from app.services.push_delivery import FirebasePushAdapter
 
 tasks_router = APIRouter()
 leave_router = APIRouter()
@@ -80,7 +86,7 @@ class TaskUpdateRequest(BaseModel):
         "new", "viewed", "in_progress", "completed", "postponed", "needs_more_time", "blocked"
     ]
     reason: str | None = Field(default=None, max_length=2000)
-    completion_attachment_key: str | None = Field(default=None, max_length=500)
+    completion_attachment_file_id: UUID | None = None
 
     @model_validator(mode="after")
     def require_reason(self) -> "TaskUpdateRequest":
@@ -99,14 +105,14 @@ class TaskManagerUpdateRequest(BaseModel):
 
 class TaskCommentRequest(BaseModel):
     body: str = Field(min_length=1, max_length=5000)
-    attachment_key: str | None = Field(default=None, max_length=500)
+    attachment_file_id: UUID | None = None
 
 
 class TaskCommentResponse(BaseModel):
     id: UUID
     author_membership_id: UUID
     body: str
-    attachment_key: str | None
+    attachment_file_id: UUID | None
     created_at: datetime
 
 
@@ -120,7 +126,7 @@ class TaskResponse(BaseModel):
     created_by_membership_id: UUID
     assignee_ids: list[UUID]
     viewed_by_ids: list[UUID]
-    completion_attachment_key: str | None
+    completion_attachment_file_id: UUID | None
     version: int
     created_at: datetime
     updated_at: datetime
@@ -166,7 +172,7 @@ class LeaveCreateRequest(BaseModel):
     starts_on: date
     ends_on: date
     reason: str = Field(min_length=3, max_length=2000)
-    attachment_key: str | None = Field(default=None, max_length=500)
+    attachment_file_id: UUID | None = None
 
     @model_validator(mode="after")
     def validate_dates(self) -> "LeaveCreateRequest":
@@ -190,7 +196,7 @@ class LeaveResponse(BaseModel):
     ends_on: date
     days: int
     reason: str
-    attachment_key: str | None
+    attachment_file_id: UUID | None
     status: str
     review_comment: str | None
     reviewed_at: datetime | None
@@ -214,7 +220,7 @@ class DocumentCreateRequest(BaseModel):
     document_number: str | None = Field(default=None, max_length=120)
     issued_on: date | None = None
     expires_on: date | None = None
-    attachment_key: str = Field(min_length=3, max_length=500)
+    attachment_file_id: UUID
     reminder_days: int = Field(default=30, ge=0, le=365)
 
     @model_validator(mode="after")
@@ -238,7 +244,7 @@ class DocumentResponse(BaseModel):
     document_number: str | None
     issued_on: date | None
     expires_on: date | None
-    attachment_key: str
+    attachment_file_id: UUID
     reminder_days: int
     status: str
     review_status: str
@@ -255,6 +261,80 @@ class NotificationResponse(BaseModel):
     urgent: bool
     read_at: datetime | None
     created_at: datetime
+    deep_link: str
+
+
+class UnreadCountResponse(BaseModel):
+    unread_count: int
+
+
+class PushProviderResponse(BaseModel):
+    configured: bool
+    provider: str = "firebase_cloud_messaging"
+
+
+class PushTokenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=20, max_length=4096)
+    platform: Literal["android"] = "android"
+    app_version: str | None = Field(default=None, max_length=40)
+
+
+class PushTokenResponse(BaseModel):
+    id: UUID
+    platform: str
+    app_version: str | None
+    is_active: bool
+    last_seen_at: datetime
+
+
+class NotificationPreferenceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    in_app_enabled: bool = True
+    push_enabled: bool = True
+    email_enabled: bool = False
+    muted_kinds: list[str] = Field(default_factory=list, max_length=100)
+    quiet_hours_start: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    quiet_hours_end: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+class NotificationPreferenceResponse(BaseModel):
+    in_app_enabled: bool
+    push_enabled: bool
+    email_enabled: bool
+    muted_kinds: list[str]
+    quiet_hours_start: str | None
+    quiet_hours_end: str | None
+
+
+def notification_deep_link(item: Notification) -> str:
+    target_id = str(item.target_id) if item.target_id else ""
+    routes = {
+        "work_task": f"/app/tasks/{target_id}",
+        "permission_request": f"/app/requests?permission={target_id}",
+        "leave_request": f"/app/requests?leave={target_id}",
+        "presence_request": f"/app/attendance?presence={target_id}",
+        "geofence_exit_event": f"/app/attendance?geofence={target_id}",
+        "employee_document": f"/app/requests?document={target_id}",
+    }
+    return routes.get(item.target_type or "", "/app")
+
+
+def notification_response(item: Notification) -> NotificationResponse:
+    return NotificationResponse(
+        id=item.id,
+        kind=item.kind,
+        title=item.title,
+        body=item.body,
+        target_type=item.target_type,
+        target_id=item.target_id,
+        urgent=item.urgent,
+        read_at=item.read_at,
+        created_at=item.created_at,
+        deep_link=notification_deep_link(item),
+    )
 
 
 def leave_response(item: LeaveRequest) -> LeaveResponse:
@@ -296,7 +376,7 @@ def document_response(item: EmployeeDocument) -> DocumentResponse:
         document_number=item.document_number,
         issued_on=item.issued_on,
         expires_on=item.expires_on,
-        attachment_key=item.attachment_key,
+        attachment_file_id=item.attachment_file_id,
         reminder_days=item.reminder_days,
         status=document_status(item),
         review_status=item.review_status,
@@ -322,7 +402,7 @@ async def task_response(session: AsyncSession, task: WorkTask) -> TaskResponse:
         created_by_membership_id=task.created_by_membership_id,
         assignee_ids=[item.membership_id for item in assignees],
         viewed_by_ids=[item.membership_id for item in assignees if item.viewed_at],
-        completion_attachment_key=task.completion_attachment_key,
+        completion_attachment_file_id=task.completion_attachment_file_id,
         version=task.version,
         created_at=task.created_at,
         updated_at=task.updated_at,
@@ -591,8 +671,9 @@ async def update_task_status(
             detail="Reload the task before saving again.",
         )
     old_status = task.status
+    await require_owned_attachment(session, context, payload.completion_attachment_file_id)
     task.status = payload.status
-    task.completion_attachment_key = payload.completion_attachment_key
+    task.completion_attachment_file_id = payload.completion_attachment_file_id
     task.version += 1
     session.add(
         TaskStatusHistory(
@@ -700,6 +781,7 @@ async def add_task_comment(
     task = await can_access_task(
         session, context.company_id, context.membership.id, task_id, is_manager, visible
     )
+    await require_owned_attachment(session, context, payload.attachment_file_id)
     comment = TaskComment(
         company_id=context.company_id,
         task_id=task.id,
@@ -886,6 +968,7 @@ async def create_leave_request(
             detail="An active leave request already covers part of this period.",
         )
     days = (payload.ends_on - payload.starts_on).days + 1
+    await require_owned_attachment(session, context, payload.attachment_file_id)
     item = LeaveRequest(
         company_id=context.company_id,
         membership_id=context.membership.id,
@@ -950,8 +1033,14 @@ async def review_leave_request(
     payload: LeaveReviewRequest,
     auth_session: CurrentAuthSession,
     session: DatabaseSession,
+    idempotency_key: IdempotencyKey = None,
 ) -> LeaveResponse:
     context = tenant_context(auth_session)
+    idempotency, replay = await begin_idempotency(
+        session, context, f"leave.review:{request_id}", idempotency_key, payload
+    )
+    if replay is not None:
+        return LeaveResponse.model_validate(replay)
     await require_permission(session, context, Permission.LEAVE_MANAGE)
     item = await session.scalar(
         select(LeaveRequest)
@@ -1026,9 +1115,10 @@ async def review_leave_request(
             ),
         ]
     )
+    result = leave_response(item)
+    complete_idempotency(idempotency, result, status.HTTP_200_OK)
     await session.commit()
-    await session.refresh(item)
-    return leave_response(item)
+    return result
 
 
 @documents_router.post("", response_model=DocumentResponse, status_code=201)
@@ -1055,6 +1145,7 @@ async def create_document(
             title="Employee not found",
             detail="The employee was not found in this company.",
         )
+    await require_owned_attachment(session, context, payload.attachment_file_id)
     values = payload.model_dump(exclude={"membership_id"})
     item = EmployeeDocument(company_id=context.company_id, membership_id=target, **values)
     session.add(item)
@@ -1153,7 +1244,174 @@ async def list_notifications(
     items = await session.scalars(
         select(Notification).where(*criteria).order_by(Notification.created_at.desc()).limit(500)
     )
-    return [NotificationResponse.model_validate(item, from_attributes=True) for item in items]
+    return [notification_response(item) for item in items]
+
+
+@notifications_router.get("/unread-count", response_model=UnreadCountResponse)
+async def unread_notification_count(
+    auth_session: CurrentAuthSession, session: DatabaseSession
+) -> UnreadCountResponse:
+    context = tenant_context(auth_session)
+    count = int(
+        await session.scalar(
+            select(func.count())
+            .select_from(Notification)
+            .where(
+                Notification.company_id == context.company_id,
+                Notification.membership_id == context.membership.id,
+                Notification.read_at.is_(None),
+            )
+        )
+        or 0
+    )
+    return UnreadCountResponse(unread_count=count)
+
+
+@notifications_router.get("/provider-status", response_model=PushProviderResponse)
+async def push_provider_status(auth_session: CurrentAuthSession) -> PushProviderResponse:
+    tenant_context(auth_session)
+    return PushProviderResponse(configured=FirebasePushAdapter().configured)
+
+
+@notifications_router.post("/read-all", response_model=UnreadCountResponse)
+async def mark_all_notifications_read(
+    auth_session: CurrentAuthSession, session: DatabaseSession
+) -> UnreadCountResponse:
+    context = tenant_context(auth_session)
+    await session.execute(
+        update(Notification)
+        .where(
+            Notification.company_id == context.company_id,
+            Notification.membership_id == context.membership.id,
+            Notification.read_at.is_(None),
+        )
+        .values(read_at=datetime.now(UTC))
+    )
+    await session.commit()
+    return UnreadCountResponse(unread_count=0)
+
+
+@notifications_router.post("/push-tokens", response_model=PushTokenResponse)
+async def register_push_token(
+    payload: PushTokenRequest,
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> PushTokenResponse:
+    context = tenant_context(auth_session)
+    token_hash = sha256(payload.token.encode("utf-8")).hexdigest()
+    item = await session.scalar(
+        select(PushDeviceToken).where(PushDeviceToken.token_hash == token_hash).with_for_update()
+    )
+    if item is not None and (
+        item.company_id != context.company_id or item.membership_id != context.membership.id
+    ):
+        raise ProblemError(
+            status=409,
+            code="push_token_registered_elsewhere",
+            title="Push token is already registered",
+            detail="Unregister this device from its previous account before registering again.",
+        )
+    if item is None:
+        item = PushDeviceToken(
+            company_id=context.company_id,
+            membership_id=context.membership.id,
+            token=payload.token,
+            token_hash=token_hash,
+            platform=payload.platform,
+            app_version=payload.app_version,
+        )
+        session.add(item)
+    else:
+        item.token = payload.token
+        item.platform = payload.platform
+        item.app_version = payload.app_version
+        item.is_active = True
+        item.last_seen_at = datetime.now(UTC)
+    await session.commit()
+    await session.refresh(item)
+    return PushTokenResponse.model_validate(item, from_attributes=True)
+
+
+@notifications_router.delete("/push-tokens/{token_id}", status_code=204)
+async def unregister_push_token(
+    token_id: UUID,
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> None:
+    context = tenant_context(auth_session)
+    item = await session.scalar(
+        select(PushDeviceToken)
+        .where(
+            PushDeviceToken.company_id == context.company_id,
+            PushDeviceToken.membership_id == context.membership.id,
+            PushDeviceToken.id == token_id,
+        )
+        .with_for_update()
+    )
+    if item is None:
+        raise ProblemError(
+            status=404,
+            code="push_token_not_found",
+            title="Push token not found",
+            detail="The push token does not belong to this member.",
+        )
+    item.is_active = False
+    await session.commit()
+
+
+@notifications_router.get("/preferences", response_model=NotificationPreferenceResponse)
+async def get_notification_preferences(
+    auth_session: CurrentAuthSession, session: DatabaseSession
+) -> NotificationPreferenceResponse:
+    context = tenant_context(auth_session)
+    item = await session.scalar(
+        select(NotificationPreference).where(
+            NotificationPreference.company_id == context.company_id,
+            NotificationPreference.membership_id == context.membership.id,
+        )
+    )
+    if item is None:
+        return NotificationPreferenceResponse(
+            in_app_enabled=True,
+            push_enabled=True,
+            email_enabled=False,
+            muted_kinds=[],
+            quiet_hours_start=None,
+            quiet_hours_end=None,
+        )
+    return NotificationPreferenceResponse.model_validate(item, from_attributes=True)
+
+
+@notifications_router.put("/preferences", response_model=NotificationPreferenceResponse)
+async def update_notification_preferences(
+    payload: NotificationPreferenceRequest,
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> NotificationPreferenceResponse:
+    context = tenant_context(auth_session)
+    item = await session.scalar(
+        select(NotificationPreference)
+        .where(
+            NotificationPreference.company_id == context.company_id,
+            NotificationPreference.membership_id == context.membership.id,
+        )
+        .with_for_update()
+    )
+    values = payload.model_dump()
+    values["muted_kinds"] = sorted(set(payload.muted_kinds))
+    if item is None:
+        item = NotificationPreference(
+            company_id=context.company_id,
+            membership_id=context.membership.id,
+            **values,
+        )
+        session.add(item)
+    else:
+        for key, value in values.items():
+            setattr(item, key, value)
+    await session.commit()
+    await session.refresh(item)
+    return NotificationPreferenceResponse.model_validate(item, from_attributes=True)
 
 
 @notifications_router.post("/{notification_id}/read", response_model=NotificationResponse)
@@ -1180,4 +1438,4 @@ async def mark_notification_read(
     item.read_at = item.read_at or datetime.now(UTC)
     await session.commit()
     await session.refresh(item)
-    return NotificationResponse.model_validate(item, from_attributes=True)
+    return notification_response(item)

@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     geofence_exit_grace_seconds: int = Field(default=120, ge=0, le=1800)
     geofence_exit_min_samples: int = Field(default=2, ge=2, le=10)
     geofence_max_accuracy_m: int = Field(default=100, ge=10, le=1000)
+    firebase_project_id: str = ""
+    firebase_credentials_path: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:

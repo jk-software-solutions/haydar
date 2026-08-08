@@ -16,6 +16,7 @@ from app.core.authorization import (
     Permission,
     membership_scopes,
     require_branch_scope,
+    require_department_scope,
     require_membership_scope,
     require_permission,
     tenant_context,
@@ -24,10 +25,11 @@ from app.core.authorization import (
 from app.core.errors import ProblemError
 from app.core.subscription_catalog import active_subscription
 from app.db.session import get_session
-from app.models.attendance import AttendanceRecord, PermissionRequest
+from app.models.attendance import AttendanceRecord, GeofenceExitEvent, PermissionRequest
 from app.models.organization import Branch, EmployeeBranchAssignment, EmployeeProfile, Shift
 from app.models.platform import AttendanceLeaderboardSetting, ExportJob
 from app.models.workforce import EmployeeDocument, LeaveRequest, TaskAssignee, WorkTask
+from app.services.idempotency import IdempotencyKey, begin_idempotency, complete_idempotency
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_session)]
@@ -66,19 +68,35 @@ class OverviewReportResponse(BaseModel):
     open_tasks: int
     expired_documents: int
     expiring_documents: int
+    unauthorized_geofence_exits: int
+
+
+class GeofenceExitReportResponse(BaseModel):
+    items: list[dict[str, object]]
+    total: int
+    status_counts: dict[str, int]
 
 
 class ExportCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     report_type: Literal[
-        "attendance", "leave", "permissions", "tasks", "documents", "branches", "shifts"
+        "attendance",
+        "geofence_exits",
+        "leave",
+        "permissions",
+        "tasks",
+        "documents",
+        "branches",
+        "shifts",
     ]
     export_format: Literal["pdf", "xlsx"]
     date_from: date | None = None
     date_to: date | None = None
     membership_id: UUID | None = None
     branch_id: UUID | None = None
+    department_id: UUID | None = None
+    shift_id: UUID | None = None
     status: str | None = Field(default=None, max_length=40)
     locale: Literal["ar", "en"] = "ar"
 
@@ -205,6 +223,8 @@ def attendance_criteria(
     membership_id: UUID | None,
     branch_id: UUID | None,
     record_status: str | None,
+    shift_id: UUID | None = None,
+    department_id: UUID | None = None,
 ) -> list[Any]:
     criteria: list[Any] = [AttendanceRecord.company_id == company_id]
     if date_from:
@@ -217,6 +237,17 @@ def attendance_criteria(
         criteria.append(AttendanceRecord.branch_id == branch_id)
     if record_status:
         criteria.append(AttendanceRecord.status == record_status)
+    if shift_id:
+        criteria.append(AttendanceRecord.shift_id == shift_id)
+    if department_id:
+        criteria.append(
+            AttendanceRecord.membership_id.in_(
+                select(EmployeeProfile.membership_id).where(
+                    EmployeeProfile.company_id == company_id,
+                    EmployeeProfile.department_id == department_id,
+                )
+            )
+        )
     return criteria
 
 
@@ -228,6 +259,8 @@ async def attendance_report(
     date_to: date | None = None,
     membership_id: UUID | None = None,
     branch_id: UUID | None = None,
+    department_id: UUID | None = None,
+    shift_id: UUID | None = None,
     record_status: Annotated[str | None, Query(alias="status")] = None,
 ) -> AttendanceReportResponse:
     context = tenant_context(auth_session)
@@ -236,8 +269,17 @@ async def attendance_report(
         await require_membership_scope(session, context, membership_id)
     if branch_id is not None:
         await require_branch_scope(session, context, branch_id)
+    if department_id is not None:
+        await require_department_scope(session, context, department_id)
     criteria = attendance_criteria(
-        context.company_id, date_from, date_to, membership_id, branch_id, record_status
+        context.company_id,
+        date_from,
+        date_to,
+        membership_id,
+        branch_id,
+        record_status,
+        shift_id,
+        department_id,
     )
     visible = await visible_membership_ids(session, context)
     if visible is not None:
@@ -261,6 +303,72 @@ async def attendance_report(
         total_late_minutes=sum(item.late_minutes for item in records),
         total_early_departure_minutes=sum(item.early_departure_minutes for item in records),
     )
+
+
+@router.get("/geofence-exits", response_model=GeofenceExitReportResponse)
+async def geofence_exit_report(
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    membership_id: UUID | None = None,
+    branch_id: UUID | None = None,
+    shift_id: UUID | None = None,
+    event_status: Annotated[str | None, Query(alias="status")] = None,
+) -> GeofenceExitReportResponse:
+    context = tenant_context(auth_session)
+    await require_permission(session, context, Permission.REPORTS_VIEW)
+    if membership_id is not None:
+        await require_membership_scope(session, context, membership_id)
+    if branch_id is not None:
+        await require_branch_scope(session, context, branch_id)
+    criteria: list[Any] = [GeofenceExitEvent.company_id == context.company_id]
+    visible = await visible_membership_ids(session, context)
+    if visible is not None:
+        criteria.append(GeofenceExitEvent.membership_id.in_(visible))
+    if membership_id:
+        criteria.append(GeofenceExitEvent.membership_id == membership_id)
+    if branch_id:
+        criteria.append(GeofenceExitEvent.branch_id == branch_id)
+    if shift_id:
+        criteria.append(GeofenceExitEvent.shift_id == shift_id)
+    if event_status:
+        criteria.append(GeofenceExitEvent.status == event_status)
+    if date_from:
+        criteria.append(
+            GeofenceExitEvent.detected_at >= datetime.combine(date_from, datetime.min.time(), UTC)
+        )
+    if date_to:
+        criteria.append(
+            GeofenceExitEvent.detected_at
+            < datetime.combine(date_to + timedelta(days=1), datetime.min.time(), UTC)
+        )
+    events = list(
+        await session.scalars(
+            select(GeofenceExitEvent)
+            .where(*criteria)
+            .order_by(GeofenceExitEvent.detected_at.desc())
+            .limit(5000)
+        )
+    )
+    counts: dict[str, int] = {}
+    items: list[dict[str, object]] = []
+    for event in events:
+        counts[event.status] = counts.get(event.status, 0) + 1
+        items.append(
+            {
+                "id": str(event.id),
+                "membership_id": str(event.membership_id),
+                "branch_id": str(event.branch_id),
+                "shift_id": str(event.shift_id),
+                "status": event.status,
+                "detected_at": event.detected_at.isoformat(),
+                "distance_m": event.distance_m or 0,
+                "accuracy_m": event.accuracy_m or 0,
+                "review_comment": event.review_comment or "",
+            }
+        )
+    return GeofenceExitReportResponse(items=items, total=len(items), status_counts=counts)
 
 
 @router.get("/overview", response_model=OverviewReportResponse)
@@ -385,6 +493,18 @@ async def overview_report(
             )
             or 0
         ),
+        unauthorized_geofence_exits=int(
+            await session.scalar(
+                select(func.count())
+                .select_from(GeofenceExitEvent)
+                .where(
+                    GeofenceExitEvent.company_id == context.company_id,
+                    GeofenceExitEvent.status.in_(("unauthorized", "confirmed_unauthorized")),
+                    *([] if visible is None else [GeofenceExitEvent.membership_id.in_(visible)]),
+                )
+            )
+            or 0
+        ),
     )
 
 
@@ -403,6 +523,8 @@ async def export_rows(
             payload.membership_id,
             payload.branch_id,
             payload.status,
+            payload.shift_id,
+            payload.department_id,
         )
         if visible_members is not None:
             criteria.append(AttendanceRecord.membership_id.in_(visible_members))
@@ -437,6 +559,46 @@ async def export_rows(
                 item.early_departure_minutes,
             ]
             for item in records
+        ]
+    if payload.report_type == "geofence_exits":
+        criteria = [GeofenceExitEvent.company_id == company_id]
+        if visible_members is not None:
+            criteria.append(GeofenceExitEvent.membership_id.in_(visible_members))
+        if payload.membership_id:
+            criteria.append(GeofenceExitEvent.membership_id == payload.membership_id)
+        if payload.branch_id:
+            criteria.append(GeofenceExitEvent.branch_id == payload.branch_id)
+        if payload.shift_id:
+            criteria.append(GeofenceExitEvent.shift_id == payload.shift_id)
+        if payload.status:
+            criteria.append(GeofenceExitEvent.status == payload.status)
+        items = await session.scalars(
+            select(GeofenceExitEvent)
+            .where(*criteria)
+            .order_by(GeofenceExitEvent.detected_at.desc())
+            .limit(10000)
+        )
+        return [
+            "Detected",
+            "Employee",
+            "Branch",
+            "Shift",
+            "Status",
+            "Distance m",
+            "Accuracy m",
+            "Review",
+        ], [
+            [
+                item.detected_at.isoformat(),
+                str(item.membership_id),
+                str(item.branch_id),
+                str(item.shift_id),
+                item.status,
+                item.distance_m or 0,
+                item.accuracy_m or 0,
+                item.review_comment or "",
+            ]
+            for item in items
         ]
     if payload.report_type == "leave":
         leave_items = await session.scalars(
@@ -620,13 +782,21 @@ async def create_export(
     payload: ExportCreateRequest,
     auth_session: CurrentAuthSession,
     session: DatabaseSession,
+    idempotency_key: IdempotencyKey = None,
 ) -> ExportJobResponse:
     context = tenant_context(auth_session)
+    idempotency, replay = await begin_idempotency(
+        session, context, "reports.export", idempotency_key, payload
+    )
+    if replay is not None:
+        return ExportJobResponse.model_validate(replay)
     await require_permission(session, context, Permission.REPORTS_EXPORT)
     if payload.membership_id is not None:
         await require_membership_scope(session, context, payload.membership_id)
     if payload.branch_id is not None:
         await require_branch_scope(session, context, payload.branch_id)
+    if payload.department_id is not None:
+        await require_department_scope(session, context, payload.department_id)
     subscription = await active_subscription(session, context.company_id)
     if subscription is None or subscription[1].features.get("reports") not in {
         "basic",
@@ -678,9 +848,10 @@ async def create_export(
         job.status = "failed"
         job.error_message = str(exc)[:1000]
         job.progress_percent = 100
+    result = export_response(job)
+    complete_idempotency(idempotency, result, status.HTTP_201_CREATED)
     await session.commit()
-    await session.refresh(job)
-    return export_response(job)
+    return result
 
 
 @router.get("/exports", response_model=list[ExportJobResponse])

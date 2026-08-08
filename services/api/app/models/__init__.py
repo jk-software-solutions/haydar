@@ -1,5 +1,6 @@
 from app.models.devices import AuditLog, Device, DeviceChangeRequest
 from app.models.files import StoredFile
+from app.models.idempotency import IdempotencyRecord
 from app.models.identity import (
     Company,
     CompanyMembership,
@@ -44,6 +45,9 @@ from app.models.workforce import (
     LeaveRequest,
     LeaveType,
     Notification,
+    NotificationDelivery,
+    NotificationPreference,
+    PushDeviceToken,
     TaskAssignee,
     TaskComment,
     TaskStatusHistory,
@@ -77,6 +81,7 @@ __all__ = [
     "Device",
     "DeviceChangeRequest",
     "StoredFile",
+    "IdempotencyRecord",
     "EmployeeProfile",
     "EmployeeGroupMembership",
     "OrganizationGroup",
@@ -91,6 +96,9 @@ __all__ = [
     "LeaveRequest",
     "LeaveType",
     "Notification",
+    "NotificationDelivery",
+    "NotificationPreference",
+    "PushDeviceToken",
     "TaskAssignee",
     "TaskComment",
     "TaskStatusHistory",

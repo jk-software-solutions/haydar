@@ -13,12 +13,41 @@ function optionalText(formData: FormData, key: string): string | undefined {
   return value || undefined;
 }
 
+export type FileUploadState = {
+  fileId?: string;
+  filename?: string;
+  message?: string;
+};
+
+export async function uploadFileAction(
+  _state: FileUploadState,
+  formData: FormData,
+): Promise<FileUploadState> {
+  if (!(await getWebSession())) return { message: "Authentication required." };
+  const upload = formData.get("upload");
+  if (!(upload instanceof File) || upload.size === 0) {
+    return { message: "Select a file first." };
+  }
+  const body = new FormData();
+  body.set("upload", upload);
+  const response = await authorizedApiFetch("/files", { method: "POST", body });
+  if (!response.ok) {
+    const problem = (await response.json().catch(() => ({}))) as { detail?: string };
+    return { message: problem.detail ?? "Upload failed." };
+  }
+  const payload = (await response.json()) as { id: string; filename: string };
+  return { fileId: payload.id, filename: payload.filename };
+}
+
 async function mutate(locale: string, path: string, method: string, payload: object) {
   const session = await getWebSession();
   if (!session) return;
   await authorizedApiFetch(path, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": crypto.randomUUID(),
+    },
     body: JSON.stringify(payload),
   });
   revalidatePath(`/${locale}/company`);
@@ -44,7 +73,7 @@ export async function updateTaskStatusAction(
     version,
     status: text(formData, "status"),
     reason: optionalText(formData, "reason"),
-    completion_attachment_key: optionalText(formData, "completion_attachment_key"),
+    completion_attachment_file_id: optionalText(formData, "completion_attachment_file_id"),
   });
 }
 
@@ -54,7 +83,7 @@ export async function createPermissionAction(locale: string, formData: FormData)
     starts_at: text(formData, "starts_at"),
     ends_at: text(formData, "ends_at"),
     reason: text(formData, "reason"),
-    attachment_key: optionalText(formData, "attachment_key"),
+    attachment_file_id: optionalText(formData, "attachment_file_id"),
   });
 }
 
@@ -91,7 +120,7 @@ export async function createLeaveRequestAction(locale: string, formData: FormDat
     starts_on: text(formData, "starts_on"),
     ends_on: text(formData, "ends_on"),
     reason: text(formData, "reason"),
-    attachment_key: optionalText(formData, "attachment_key"),
+    attachment_file_id: optionalText(formData, "attachment_file_id"),
   });
 }
 
@@ -111,7 +140,7 @@ export async function createDocumentAction(locale: string, formData: FormData): 
     document_number: optionalText(formData, "document_number"),
     issued_on: optionalText(formData, "issued_on"),
     expires_on: optionalText(formData, "expires_on"),
-    attachment_key: text(formData, "attachment_key"),
+    attachment_file_id: text(formData, "attachment_file_id"),
     reminder_days: Number(text(formData, "reminder_days") || "30"),
   });
 }
@@ -193,4 +222,8 @@ export async function reviewGeofenceExitAction(
     version,
     comment: text(formData, "comment"),
   });
+}
+
+export async function markAllNotificationsReadAction(locale: string): Promise<void> {
+  await mutate(locale, "/notifications/read-all", "POST", {});
 }

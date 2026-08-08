@@ -11,6 +11,7 @@ from app.db.session import dispose_engine, get_sessionmaker
 from app.models.attendance import AttendanceRecord, PresenceRecipient, PresenceRequest
 from app.models.platform import CompanySubscription
 from app.models.workforce import EmployeeDocument, Notification, TaskAssignee, WorkTask
+from app.services.push_delivery import deliver_pending_notifications
 
 
 class MaintenanceResult(TypedDict):
@@ -19,6 +20,10 @@ class MaintenanceResult(TypedDict):
     task_reminders: int
     document_reminders: int
     expired_subscriptions: int
+    push_created: int
+    push_delivered: int
+    push_failed: int
+    push_blocked: int
 
 
 async def notification_exists(
@@ -209,14 +214,23 @@ async def expire_subscriptions(session: AsyncSession, now: datetime) -> int:
 
 async def run_maintenance(session: AsyncSession, now: datetime | None = None) -> MaintenanceResult:
     current = now or datetime.now(UTC)
-    result = MaintenanceResult(
-        missing_checkouts=await expire_open_attendance(session, current),
-        presence_timeouts=await expire_presence_requests(session, current),
-        task_reminders=await create_task_reminders(session, current),
-        document_reminders=await create_document_reminders(session, current.date()),
-        expired_subscriptions=await expire_subscriptions(session, current),
-    )
+    result: MaintenanceResult = {
+        "missing_checkouts": await expire_open_attendance(session, current),
+        "presence_timeouts": await expire_presence_requests(session, current),
+        "task_reminders": await create_task_reminders(session, current),
+        "document_reminders": await create_document_reminders(session, current.date()),
+        "expired_subscriptions": await expire_subscriptions(session, current),
+        "push_created": 0,
+        "push_delivered": 0,
+        "push_failed": 0,
+        "push_blocked": 0,
+    }
     await session.commit()
+    push = await deliver_pending_notifications(session)
+    result["push_created"] = push["created"]
+    result["push_delivered"] = push["delivered"]
+    result["push_failed"] = push["failed"]
+    result["push_blocked"] = push["blocked"]
     return result
 
 

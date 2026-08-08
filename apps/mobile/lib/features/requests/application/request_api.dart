@@ -11,8 +11,13 @@ final requestApiProvider = Provider<RequestApi>(
 class RequestApi {
   RequestApi(this.dio);
   final Dio dio;
-  Options _auth(AuthSession session) => Options(
-    headers: <String, String>{'Authorization': 'Bearer ${session.accessToken}'},
+  Options _auth(AuthSession session, {bool idempotent = false}) => Options(
+    headers: <String, String>{
+      'Authorization': 'Bearer ${session.accessToken}',
+      if (idempotent)
+        'Idempotency-Key':
+            'mobile-${DateTime.now().toUtc().microsecondsSinceEpoch}',
+    },
   );
 
   Future<List<RequestItem>> permissions(
@@ -57,7 +62,7 @@ class RequestApi {
         : '/leave/requests/${item.id}/review';
     await dio.post<void>(
       path,
-      options: _auth(session),
+      options: _auth(session, idempotent: true),
       data: <String, String>{'decision': decision},
     );
   }
@@ -70,6 +75,17 @@ class RequestApi {
     return (response.data ?? <dynamic>[])
         .whereType<Map<String, dynamic>>()
         .map(LeaveTypeItem.fromJson)
+        .toList(growable: false);
+  }
+
+  Future<List<LeaveBalanceItem>> leaveBalances(AuthSession session) async {
+    final response = await dio.get<List<dynamic>>(
+      '/leave/balances',
+      options: _auth(session),
+    );
+    return (response.data ?? <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(LeaveBalanceItem.fromJson)
         .toList(growable: false);
   }
 
@@ -142,7 +158,7 @@ class RequestApi {
         'document_type': type,
         'document_number': number,
         'expires_on': expiresOn?.toIso8601String().substring(0, 10),
-        'attachment_key': fileId,
+        'attachment_file_id': fileId,
         'reminder_days': 30,
       },
     );
@@ -190,4 +206,29 @@ class LeaveTypeItem {
   );
   final String id;
   final String name;
+}
+
+class LeaveBalanceItem {
+  const LeaveBalanceItem({
+    required this.leaveTypeId,
+    required this.year,
+    required this.allocatedDays,
+    required this.usedDays,
+    required this.remainingDays,
+  });
+
+  factory LeaveBalanceItem.fromJson(Map<String, dynamic> json) =>
+      LeaveBalanceItem(
+        leaveTypeId: json['leave_type_id'] as String? ?? '',
+        year: json['year'] as int? ?? DateTime.now().year,
+        allocatedDays: json['allocated_days'] as int? ?? 0,
+        usedDays: json['used_days'] as int? ?? 0,
+        remainingDays: json['remaining_days'] as int? ?? 0,
+      );
+
+  final String leaveTypeId;
+  final int year;
+  final int allocatedDays;
+  final int usedDays;
+  final int remainingDays;
 }

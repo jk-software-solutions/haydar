@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,6 +26,7 @@ class StoredFile(Base):
             name="fk_stored_files_company_uploader",
         ),
         Index("ix_stored_files_company_created", "company_id", "created_at"),
+        UniqueConstraint("company_id", "id", name="uq_stored_files_company_id"),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)

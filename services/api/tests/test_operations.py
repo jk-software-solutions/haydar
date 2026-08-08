@@ -148,13 +148,29 @@ async def test_attendance_requires_approved_device_and_tracks_session(
     assert registration.status_code == 201
     assert registration.json()["device"]["status"] == "approved"
 
+    check_in_headers = {
+        **auth_headers(employee, installation_id),
+        "Idempotency-Key": "attendance-check-in-001",
+    }
     check_in = await db_client.post(
         "/api/v1/attendance/check-in",
-        headers=auth_headers(employee, installation_id),
+        headers=check_in_headers,
         json=action,
     )
     assert check_in.status_code == 201
     assert check_in.json()["checked_in_at"] is not None
+    repeated_check_in = await db_client.post(
+        "/api/v1/attendance/check-in", headers=check_in_headers, json=action
+    )
+    assert repeated_check_in.status_code == 201
+    assert repeated_check_in.json() == check_in.json()
+    conflicting_check_in = await db_client.post(
+        "/api/v1/attendance/check-in",
+        headers=check_in_headers,
+        json={**action, "latitude": "24.713700"},
+    )
+    assert conflicting_check_in.status_code == 409
+    assert conflicting_check_in.json()["code"] == "idempotency_key_conflict"
     duplicate = await db_client.post(
         "/api/v1/attendance/check-in",
         headers=auth_headers(employee, installation_id),
@@ -165,7 +181,10 @@ async def test_attendance_requires_approved_device_and_tracks_session(
 
     check_out = await db_client.post(
         "/api/v1/attendance/check-out",
-        headers=auth_headers(employee, installation_id),
+        headers={
+            **auth_headers(employee, installation_id),
+            "Idempotency-Key": "attendance-check-out-001",
+        },
         json=action,
     )
     assert check_out.status_code == 200
@@ -252,6 +271,13 @@ async def test_geofence_exit_detection_permission_reconfirmation_and_review(
     events = await db_client.get("/api/v1/geofence-exit-events", headers=auth_headers(owner))
     assert events.status_code == 200
     assert [event["id"] for event in events.json()] == [event_id]
+    report = await db_client.get(
+        "/api/v1/reports/geofence-exits?status=unauthorized",
+        headers=auth_headers(owner),
+    )
+    assert report.status_code == 200
+    assert report.json()["total"] == 1
+    assert report.json()["status_counts"] == {"unauthorized": 1}
     other_events = await db_client.get(
         "/api/v1/geofence-exit-events", headers=auth_headers(other_owner)
     )
@@ -271,17 +297,29 @@ async def test_geofence_exit_detection_permission_reconfirmation_and_review(
     assert inside.status_code == 201
     assert inside.json()["reconfirmed_at"] is not None
 
+    review_headers = {
+        **auth_headers(owner),
+        "Idempotency-Key": "geofence-review-001",
+    }
+    review_payload = {
+        "decision": "confirmed_unauthorized",
+        "comment": "Confirmed after manager review",
+        "version": inside.json()["version"],
+    }
     review = await db_client.post(
         f"/api/v1/geofence-exit-events/{event_id}/review",
-        headers=auth_headers(owner),
-        json={
-            "decision": "confirmed_unauthorized",
-            "comment": "Confirmed after manager review",
-            "version": inside.json()["version"],
-        },
+        headers=review_headers,
+        json=review_payload,
     )
     assert review.status_code == 200
     assert review.json()["status"] == "confirmed_unauthorized"
+    replayed_review = await db_client.post(
+        f"/api/v1/geofence-exit-events/{event_id}/review",
+        headers=review_headers,
+        json=review_payload,
+    )
+    assert replayed_review.status_code == 200
+    assert replayed_review.json() == review.json()
     cross_company_review = await db_client.post(
         f"/api/v1/geofence-exit-events/{event_id}/review",
         headers=auth_headers(other_owner),
@@ -367,6 +405,57 @@ async def test_tasks_leave_files_exports_and_tenant_isolation(
     )
     assert notifications.status_code == 200
     assert any(item["kind"] == "task_status_changed" for item in notifications.json())
+    assert any(item["deep_link"].startswith("/app/tasks/") for item in notifications.json())
+    unread_count = await db_client.get(
+        "/api/v1/notifications/unread-count", headers=auth_headers(owner)
+    )
+    assert unread_count.status_code == 200
+    assert unread_count.json()["unread_count"] >= 1
+    default_preferences = await db_client.get(
+        "/api/v1/notifications/preferences", headers=auth_headers(owner)
+    )
+    assert default_preferences.status_code == 200
+    assert default_preferences.json()["push_enabled"] is True
+    preferences = await db_client.put(
+        "/api/v1/notifications/preferences",
+        headers=auth_headers(owner),
+        json={
+            "in_app_enabled": True,
+            "push_enabled": True,
+            "email_enabled": False,
+            "muted_kinds": ["task_due_soon", "task_due_soon"],
+            "quiet_hours_start": "22:00",
+            "quiet_hours_end": "06:00",
+        },
+    )
+    assert preferences.status_code == 200
+    assert preferences.json()["muted_kinds"] == ["task_due_soon"]
+    push_token = await db_client.post(
+        "/api/v1/notifications/push-tokens",
+        headers=auth_headers(owner),
+        json={
+            "token": "test-firebase-registration-token-00000001",
+            "platform": "android",
+            "app_version": "1.0.0",
+        },
+    )
+    assert push_token.status_code == 200
+    provider = await db_client.get(
+        "/api/v1/notifications/provider-status", headers=auth_headers(owner)
+    )
+    assert provider.status_code == 200
+    assert provider.json() == {
+        "configured": False,
+        "provider": "firebase_cloud_messaging",
+    }
+    cross_tenant_unregister = await db_client.delete(
+        f"/api/v1/notifications/push-tokens/{push_token.json()['id']}",
+        headers=auth_headers(other_owner),
+    )
+    assert cross_tenant_unregister.status_code == 404
+    read_all = await db_client.post("/api/v1/notifications/read-all", headers=auth_headers(owner))
+    assert read_all.status_code == 200
+    assert read_all.json()["unread_count"] == 0
 
     leave_type = await db_client.post(
         "/api/v1/leave/types",
@@ -406,6 +495,39 @@ async def test_tasks_leave_files_exports_and_tenant_isolation(
     assert review.status_code == 200
     assert review.json()["status"] == "approved"
 
+    yesterday = date.today() - timedelta(days=1)
+    historical_leave = await db_client.post(
+        "/api/v1/leave/requests",
+        headers=auth_headers(employee),
+        json={
+            "leave_type_id": leave_type_id,
+            "starts_on": yesterday.isoformat(),
+            "ends_on": yesterday.isoformat(),
+            "reason": "Approved historical leave",
+        },
+    )
+    assert historical_leave.status_code == 201
+    historical_review = await db_client.post(
+        f"/api/v1/leave/requests/{historical_leave.json()['id']}/review",
+        headers=auth_headers(owner),
+        json={"decision": "approved", "comment": "Approved"},
+    )
+    assert historical_review.status_code == 200
+    await configure_attendance(db_client, owner, employee)
+    reconciliation = await db_client.post(
+        f"/api/v1/attendance/reconcile?work_date={yesterday.isoformat()}",
+        headers=auth_headers(owner),
+    )
+    assert reconciliation.status_code == 200
+    assert reconciliation.json()["generated_absence_records"] == 1
+    attendance = await db_client.get(
+        "/api/v1/attendance",
+        headers=auth_headers(owner),
+        params={"membership_id": membership_id, "date_from": yesterday.isoformat()},
+    )
+    assert attendance.status_code == 200
+    assert attendance.json()[0]["status"] == "on_leave"
+
     upload = await db_client.post(
         "/api/v1/files",
         headers=auth_headers(employee),
@@ -421,13 +543,73 @@ async def test_tasks_leave_files_exports_and_tenant_isolation(
     )
     assert cross_tenant_download.status_code == 404
 
+    manager_upload = await db_client.post(
+        "/api/v1/files",
+        headers=auth_headers(owner),
+        files={"upload": ("contract.pdf", b"protected contract", "application/pdf")},
+    )
+    assert manager_upload.status_code == 201
+    manager_file_id = manager_upload.json()["id"]
+    unlinked_download = await db_client.get(
+        f"/api/v1/files/{manager_file_id}", headers=auth_headers(employee)
+    )
+    assert unlinked_download.status_code == 403
+    document = await db_client.post(
+        "/api/v1/documents",
+        headers=auth_headers(owner),
+        json={
+            "membership_id": membership_id,
+            "document_type": "employment_contract",
+            "attachment_file_id": manager_file_id,
+            "reminder_days": 30,
+        },
+    )
+    assert document.status_code == 201
+    assert document.json()["attachment_file_id"] == manager_file_id
+    linked_download = await db_client.get(
+        f"/api/v1/files/{manager_file_id}", headers=auth_headers(employee)
+    )
+    assert linked_download.status_code == 200
+    assert linked_download.content == b"protected contract"
+    stolen_attachment = await db_client.post(
+        "/api/v1/permission-requests",
+        headers=auth_headers(employee),
+        json={
+            "request_type": "one_hour",
+            "starts_at": "2026-10-01T09:00:00Z",
+            "ends_at": "2026-10-01T10:00:00Z",
+            "reason": "Must not steal another uploader file",
+            "attachment_file_id": manager_file_id,
+        },
+    )
+    assert stolen_attachment.status_code == 404
+    cross_tenant_document = await db_client.post(
+        "/api/v1/documents",
+        headers=auth_headers(other_owner),
+        json={
+            "document_type": "employment_contract",
+            "attachment_file_id": manager_file_id,
+        },
+    )
+    assert cross_tenant_document.status_code == 404
+
+    export_headers = {
+        **auth_headers(owner),
+        "Idempotency-Key": "task-export-001",
+    }
+    export_payload = {"report_type": "tasks", "export_format": "xlsx", "locale": "en"}
     export = await db_client.post(
         "/api/v1/reports/exports",
-        headers=auth_headers(owner),
-        json={"report_type": "tasks", "export_format": "xlsx", "locale": "en"},
+        headers=export_headers,
+        json=export_payload,
     )
     assert export.status_code == 201
     assert export.json()["status"] == "completed"
+    replayed_export = await db_client.post(
+        "/api/v1/reports/exports", headers=export_headers, json=export_payload
+    )
+    assert replayed_export.status_code == 201
+    assert replayed_export.json() == export.json()
     download = await db_client.get(
         f"/api/v1/reports/exports/{export.json()['id']}/download",
         headers=auth_headers(owner),
