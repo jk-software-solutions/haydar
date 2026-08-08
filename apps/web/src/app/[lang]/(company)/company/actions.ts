@@ -229,7 +229,11 @@ export async function updateBranchAction(
   const response = await authorizedApiFetch(`/branches/${branchId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...parsed.data, version: Number(formData.get("version")) }),
+    body: JSON.stringify({
+      ...parsed.data,
+      manager_membership_id: String(formData.get("manager_membership_id") ?? "") || null,
+      version: Number(formData.get("version")),
+    }),
   });
   if (!response.ok) {
     const problem = await response.json().catch(() => ({})) as { detail?: string };
@@ -237,6 +241,41 @@ export async function updateBranchAction(
   }
   revalidatePath(`/${locale}/company`);
   return { message: locale === "ar" ? "تم تحديث الفرع." : "Branch updated.", success: true };
+}
+
+export async function replaceBranchSupervisorsAction(
+  locale: string,
+  branchId: string,
+  _state: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await getWebSession();
+  if (!session?.permissions.includes("branches:manage")) {
+    return { message: locale === "ar" ? "ليس لديك صلاحية." : "Permission denied." };
+  }
+  const version = Number(formData.get("version"));
+  if (!Number.isInteger(version) || version < 1) {
+    return { message: locale === "ar" ? "إصدار الفرع غير صالح." : "Invalid branch version." };
+  }
+  const response = await authorizedApiFetch(`/branches/${branchId}/supervisors`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      version,
+      membership_ids: formData.getAll("membership_ids").map(String),
+    }),
+  });
+  if (!response.ok) {
+    const problem = await response.json().catch(() => ({})) as { detail?: string };
+    return {
+      message: problem.detail ?? (locale === "ar" ? "تعذر تحديث مشرفي الفرع." : "Branch supervisor update failed."),
+    };
+  }
+  revalidatePath(`/${locale}/company`);
+  return {
+    message: locale === "ar" ? "تم تحديث مشرفي الفرع." : "Branch supervisors updated.",
+    success: true,
+  };
 }
 
 export async function createShiftAction(

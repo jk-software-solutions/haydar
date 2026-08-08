@@ -40,7 +40,8 @@ rather than introducing a parallel authorization system.
 ## Organization
 
 - `branches`: code, names, addresses, coordinates, geofence, timezone, hours,
-  manager and active state.
+  eligible manager and active state. Supervisor responsibility reuses tenant-bound
+  `membership_branch_scopes` for memberships carrying the supervisor role.
 - `departments`: tenant-scoped hierarchy and active state.
 - `employee_profiles`: membership employment details and department.
 - `employee_branch_history`: effective-dated assignment/transfer history.
@@ -67,7 +68,8 @@ coordinates and geofence radius, timezone, working hours, optional same-tenant
 manager, active state, and optimistic version. Assignment rows bind employee,
 branch, and actor through composite company foreign keys; a partial unique index
 permits only one open assignment per employee while retaining immutable transfer
-history.
+history. The service enforces owner/manager eligibility for the single manager and
+supervisor-role eligibility for every explicitly assigned branch supervisor.
 
 Migration `20260801_0007` implements shifts, employee/branch shift assignments,
 and dated shift exceptions. Shifts persist server-derived overnight state,

@@ -121,7 +121,10 @@ updates append immutable audit events.
 - `/branches` supports tenant-scoped create, paginated list, detail, versioned
   update, and soft archive. Branch payloads include code, Saudi short/full
   address, coordinates, geofence radius, timezone, working hours, and optional
-  same-tenant manager membership.
+  same-tenant owner/manager-role manager membership.
+- `GET /branches/management/supervisors` lists visible branch supervisor mappings.
+  `PUT /branches/{branch_id}/supervisors` atomically replaces the branch's active
+  supervisor-role members using the branch version and writes an audit event.
 - `/departments` supports tenant-scoped create, list, detail, versioned update,
   hierarchy, and soft archive.
 - `POST /branches/assignments` creates an initial employee assignment or closes

@@ -50,6 +50,34 @@ async def invite_employee(
     return activation.json()
 
 
+async def invite_member(
+    client: httpx.AsyncClient,
+    owner: dict[str, object],
+    *,
+    email: str,
+    role_code: str,
+) -> dict[str, object]:
+    invitation = await client.post(
+        "/api/v1/invitations",
+        headers=headers(owner),
+        json={
+            "email": email,
+            "full_name": f"Branch {role_code.title()}",
+            "role_code": role_code,
+        },
+    )
+    assert invitation.status_code == 201
+    activation = await client.post(
+        "/api/v1/auth/invitations/activate",
+        json={
+            "activation_token": invitation.json()["activation_token"],
+            "password": "MemberPass123!",
+        },
+    )
+    assert activation.status_code == 200
+    return activation.json()
+
+
 def branch_payload(code: str, name: str, *, latitude: str = "24.713600") -> dict[str, object]:
     return {
         "code": code,
@@ -257,3 +285,110 @@ async def test_effective_branch_transfer_history_and_cross_tenant_rejection(
     assert archived.status_code == 204
     active = await db_client.get("/api/v1/branches", headers=headers(owner_a))
     assert active.json()["total"] == 1
+
+
+async def test_branch_management_enforces_manager_and_supervisor_roles(
+    db_client: httpx.AsyncClient,
+) -> None:
+    owner = await register_company(db_client, "Branch Roles", "branch-roles@example.com")
+    other_owner = await register_company(
+        db_client, "Other Branch Roles", "other-branch-roles@example.com"
+    )
+    supervisor = await invite_member(
+        db_client,
+        owner,
+        email="eligible-supervisor@example.com",
+        role_code="SUPERVISOR",
+    )
+    employee = await invite_member(
+        db_client,
+        owner,
+        email="ineligible-employee@example.com",
+        role_code="EMPLOYEE",
+    )
+    manager = await invite_member(
+        db_client,
+        owner,
+        email="eligible-manager@example.com",
+        role_code="MANAGER",
+    )
+    supervisor_id = supervisor["session"]["membership_id"]
+    employee_id = employee["session"]["membership_id"]
+    manager_id = manager["session"]["membership_id"]
+
+    created = await db_client.post(
+        "/api/v1/branches",
+        headers=headers(owner),
+        json=branch_payload("ROLE-1", "Role-managed Branch"),
+    )
+    assert created.status_code == 201
+    branch = created.json()
+
+    ineligible_supervisor = await db_client.put(
+        f"/api/v1/branches/{branch['id']}/supervisors",
+        headers=headers(owner),
+        json={"version": 1, "membership_ids": [employee_id]},
+    )
+    assert ineligible_supervisor.status_code == 422
+    assert ineligible_supervisor.json()["code"] == "branch_supervisor_invalid"
+
+    assigned = await db_client.put(
+        f"/api/v1/branches/{branch['id']}/supervisors",
+        headers=headers(owner),
+        json={"version": 1, "membership_ids": [supervisor_id]},
+    )
+    assert assigned.status_code == 200
+    assert assigned.json()["membership_ids"] == [supervisor_id]
+    assert assigned.json()["version"] == 2
+
+    mappings = await db_client.get(
+        "/api/v1/branches/management/supervisors", headers=headers(owner)
+    )
+    assert mappings.status_code == 200
+    assert mappings.json() == [
+        {
+            "branch_id": branch["id"],
+            "membership_ids": [supervisor_id],
+            "version": 2,
+        }
+    ]
+
+    stale = await db_client.put(
+        f"/api/v1/branches/{branch['id']}/supervisors",
+        headers=headers(owner),
+        json={"version": 1, "membership_ids": []},
+    )
+    assert stale.status_code == 409
+
+    invalid_manager = await db_client.patch(
+        f"/api/v1/branches/{branch['id']}",
+        headers=headers(owner),
+        json={"version": 2, "manager_membership_id": employee_id},
+    )
+    assert invalid_manager.status_code == 422
+    assert invalid_manager.json()["code"] == "branch_manager_role_invalid"
+
+    updated_manager = await db_client.patch(
+        f"/api/v1/branches/{branch['id']}",
+        headers=headers(owner),
+        json={"version": 2, "manager_membership_id": manager_id},
+    )
+    assert updated_manager.status_code == 200
+    assert updated_manager.json()["manager_membership_id"] == manager_id
+    assert updated_manager.json()["version"] == 3
+
+    cross_tenant = await db_client.put(
+        f"/api/v1/branches/{branch['id']}/supervisors",
+        headers=headers(other_owner),
+        json={"version": 3, "membership_ids": []},
+    )
+    assert cross_tenant.status_code == 404
+
+    cleared = await db_client.put(
+        f"/api/v1/branches/{branch['id']}/supervisors",
+        headers=headers(owner),
+        json={"version": 3, "membership_ids": []},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["membership_ids"] == []
+    assert cleared.json()["version"] == 4

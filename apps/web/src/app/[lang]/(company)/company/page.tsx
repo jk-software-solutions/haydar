@@ -44,6 +44,11 @@ type Shift = {
 
 type NamedOption = { id: string; name: string };
 type PermissionItem = { code: string; description: string };
+type BranchSupervisorAssignment = {
+  branch_id: string;
+  membership_ids: string[];
+  version: number;
+};
 type GeofenceExit = {
   id: string;
   membership_id: string;
@@ -95,6 +100,7 @@ export default async function CompanyPortal({
   const canEditEmployees = canManage;
   const canManageSettings = session.roles.includes("OWNER");
   const canManageGroups = session.permissions.includes("departments:manage");
+  const canManageBranches = session.permissions.includes("branches:manage");
   const canReviewGeofence = session.permissions.includes("geofence_exits:manage");
   const [
     invitationResponse,
@@ -109,6 +115,7 @@ export default async function CompanyPortal({
     geofenceResponse,
     notificationsResponse,
     notificationPreferencesResponse,
+    branchSupervisorsResponse,
   ] = await Promise.all([
     canManage ? authorizedApiFetch("/invitations") : Promise.resolve(null),
     authorizedApiFetch("/employees?page_size=100"),
@@ -126,6 +133,9 @@ export default async function CompanyPortal({
       : Promise.resolve(null),
     authorizedApiFetch("/notifications"),
     authorizedApiFetch("/notifications/preferences"),
+    canManageBranches
+      ? authorizedApiFetch("/branches/management/supervisors")
+      : Promise.resolve(null),
   ]);
   const invitationPayload: { items: Invitation[] } = invitationResponse?.ok
     ? ((await invitationResponse.json()) as { items: Invitation[] })
@@ -170,7 +180,24 @@ export default async function CompanyPortal({
         quiet_hours_start: null,
         quiet_hours_end: null,
       };
+  const branchSupervisorAssignments: BranchSupervisorAssignment[] = branchSupervisorsResponse?.ok
+    ? ((await branchSupervisorsResponse.json()) as BranchSupervisorAssignment[])
+    : [];
   const accessByMember = new Map(accessItems.map((item) => [item.membership_id, item]));
+  const rolesFor = (employee: EditableEmployee) =>
+    new Set([employee.role_code, ...(accessByMember.get(employee.membership_id)?.role_codes ?? [])]);
+  const managerOptions = employeePayload.items
+    .filter((employee) => {
+      const roles = rolesFor(employee);
+      return employee.membership_status === "active" && (roles.has("OWNER") || roles.has("MANAGER"));
+    })
+    .map((employee) => ({ id: employee.membership_id, name: employee.display_name }));
+  const supervisorOptions = employeePayload.items
+    .filter((employee) => employee.membership_status === "active" && rolesFor(employee).has("SUPERVISOR"))
+    .map((employee) => ({ id: employee.membership_id, name: employee.display_name }));
+  const supervisorsByBranch = new Map(
+    branchSupervisorAssignments.map((assignment) => [assignment.branch_id, assignment]),
+  );
   const signOut = logoutAction.bind(null, lang);
 
   return (
@@ -235,7 +262,16 @@ export default async function CompanyPortal({
                   <li key={branch.id}>
                     <div><strong>{branch.name}</strong><span>{branch.code} · {branch.saudi_short_address || branch.full_address}</span></div>
                     <span>{branch.latitude}, {branch.longitude} · {branch.geofence_radius_m}m</span>
-                    {canEditEmployees && <BranchEditForm locale={lang} branch={branch} />}
+                    {canManageBranches && (
+                      <BranchEditForm
+                        locale={lang}
+                        branch={branch}
+                        managerOptions={managerOptions}
+                        supervisorOptions={supervisorOptions}
+                        supervisorIds={supervisorsByBranch.get(branch.id)?.membership_ids ?? []}
+                        supervisorVersion={supervisorsByBranch.get(branch.id)?.version ?? branch.version}
+                      />
+                    )}
                     {canEditEmployees && <form action={archive}><button className="danger-button" type="submit">{ar ? "أرشفة" : "Archive"}</button></form>}
                   </li>
                 );

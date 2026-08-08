@@ -46,5 +46,8 @@ approval.
 
 Operational-group membership is managed from the group section and affects scoped tasks, Proof of
 Presence, reports and manager visibility. Branch details can be edited with optimistic versioning.
+The branch editor only offers owner/manager-role members as the branch manager and supports multiple
+supervisor-role members. Saving either branch details or supervisors refreshes the shared branch
+version; reload after a concurrency warning before retrying.
 QR controls distinguish creation from rotation: rotation invalidates all prior active tokens for the
 selected branch. Use explicit revoke if a displayed token may have been exposed.

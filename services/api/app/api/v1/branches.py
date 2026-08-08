@@ -5,12 +5,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import CurrentAuthSession
 from app.core.authorization import (
     Permission,
+    membership_roles,
     membership_scopes,
     require_branch_scope,
     require_department_scope,
@@ -23,7 +24,7 @@ from app.core.errors import ProblemError
 from app.core.subscription_catalog import active_subscription, plan_limit
 from app.db.session import get_session
 from app.models.devices import AuditLog
-from app.models.identity import CompanyMembership
+from app.models.identity import CompanyMembership, MembershipBranchScope, MembershipRole
 from app.models.organization import Branch, Department, EmployeeBranchAssignment, EmployeeProfile
 
 branches_router = APIRouter()
@@ -144,6 +145,19 @@ class BranchListResponse(BaseModel):
     page: int
     page_size: int
     total: int
+
+
+class BranchSupervisorsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
+    membership_ids: list[UUID] = Field(default_factory=list, max_length=500)
+
+
+class BranchSupervisorsResponse(BaseModel):
+    branch_id: UUID
+    membership_ids: list[UUID]
+    version: int
 
 
 class DepartmentFields(BaseModel):
@@ -308,6 +322,49 @@ async def tenant_membership_exists(
     )
 
 
+async def membership_has_any_role(
+    session: AsyncSession,
+    company_id: UUID,
+    membership_id: UUID,
+    allowed_roles: set[str],
+) -> bool:
+    return bool(
+        set(await membership_roles(session, company_id, membership_id)) & allowed_roles
+    )
+
+
+async def branch_supervisor_ids(
+    session: AsyncSession, company_id: UUID, branch_id: UUID
+) -> list[UUID]:
+    return list(
+        await session.scalars(
+            select(CompanyMembership.id)
+            .join(
+                MembershipBranchScope,
+                (MembershipBranchScope.company_id == CompanyMembership.company_id)
+                & (MembershipBranchScope.membership_id == CompanyMembership.id),
+            )
+            .outerjoin(
+                MembershipRole,
+                (MembershipRole.company_id == CompanyMembership.company_id)
+                & (MembershipRole.membership_id == CompanyMembership.id)
+                & (MembershipRole.role_code == "SUPERVISOR"),
+            )
+            .where(
+                CompanyMembership.company_id == company_id,
+                CompanyMembership.status == "active",
+                MembershipBranchScope.branch_id == branch_id,
+                or_(
+                    CompanyMembership.role_code == "SUPERVISOR",
+                    MembershipRole.role_code == "SUPERVISOR",
+                ),
+            )
+            .distinct()
+            .order_by(CompanyMembership.id)
+        )
+    )
+
+
 async def ensure_unique_branch_code(
     session: AsyncSession,
     company_id: UUID,
@@ -385,6 +442,18 @@ async def create_branch(
             code="branch_manager_invalid",
             title="Branch manager is invalid",
             detail="The manager must be an active member of the current company.",
+        )
+    if payload.manager_membership_id is not None and not await membership_has_any_role(
+        session,
+        context.company_id,
+        payload.manager_membership_id,
+        {"OWNER", "MANAGER"},
+    ):
+        raise ProblemError(
+            status=422,
+            code="branch_manager_role_invalid",
+            title="Branch manager role is invalid",
+            detail="The branch manager must have the owner or manager role.",
         )
     branch = Branch(company_id=context.company_id, **payload.model_dump())
     session.add(branch)
@@ -659,6 +728,16 @@ async def update_branch(
             title="Branch manager is invalid",
             detail="The manager must be an active member of the current company.",
         )
+    manager_id = changes.get("manager_membership_id")
+    if isinstance(manager_id, UUID) and not await membership_has_any_role(
+        session, context.company_id, manager_id, {"OWNER", "MANAGER"}
+    ):
+        raise ProblemError(
+            status=422,
+            code="branch_manager_role_invalid",
+            title="Branch manager role is invalid",
+            detail="The branch manager must have the owner or manager role.",
+        )
     for field_name, value in changes.items():
         setattr(branch, field_name, value)
     branch.version += 1
@@ -719,6 +798,116 @@ async def archive_branch(
         )
     )
     await session.commit()
+
+
+@branches_router.get(
+    "/management/supervisors", response_model=list[BranchSupervisorsResponse]
+)
+async def list_branch_supervisors(
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> list[BranchSupervisorsResponse]:
+    context = tenant_context(auth_session)
+    await require_permission(session, context, Permission.BRANCHES_VIEW)
+    scopes = await membership_scopes(session, context)
+    criteria = [Branch.company_id == context.company_id, Branch.is_active.is_(True)]
+    if not scopes.unrestricted:
+        criteria.append(Branch.id.in_(scopes.branch_ids))
+    branches = list(await session.scalars(select(Branch).where(*criteria).order_by(Branch.name)))
+    return [
+        BranchSupervisorsResponse(
+            branch_id=branch.id,
+            membership_ids=await branch_supervisor_ids(session, context.company_id, branch.id),
+            version=branch.version,
+        )
+        for branch in branches
+    ]
+
+
+@branches_router.put("/{branch_id}/supervisors", response_model=BranchSupervisorsResponse)
+async def replace_branch_supervisors(
+    branch_id: UUID,
+    payload: BranchSupervisorsRequest,
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> BranchSupervisorsResponse:
+    context = tenant_context(auth_session)
+    await require_permission(session, context, Permission.BRANCHES_MANAGE)
+    await require_branch_scope(session, context, branch_id)
+    branch = await session.scalar(
+        select(Branch)
+        .where(Branch.company_id == context.company_id, Branch.id == branch_id)
+        .with_for_update()
+    )
+    if branch is None:
+        raise ProblemError(
+            status=404,
+            code="branch_not_found",
+            title="Branch not found",
+            detail="The branch does not exist in the current company.",
+        )
+    if branch.version != payload.version:
+        raise ProblemError(
+            status=409,
+            code="concurrency_conflict",
+            title="Branch changed",
+            detail="Reload the branch before updating supervisors.",
+        )
+    requested = set(payload.membership_ids)
+    eligible: set[UUID] = set()
+    for membership_id in requested:
+        if await tenant_membership_exists(
+            session, context.company_id, membership_id
+        ) and await membership_has_any_role(
+            session, context.company_id, membership_id, {"SUPERVISOR"}
+        ):
+            eligible.add(membership_id)
+    if eligible != requested:
+        raise ProblemError(
+            status=422,
+            code="branch_supervisor_invalid",
+            title="Branch supervisor is invalid",
+            detail="Every branch supervisor must be an active member with the supervisor role.",
+        )
+    before = set(await branch_supervisor_ids(session, context.company_id, branch.id))
+    if before:
+        await session.execute(
+            delete(MembershipBranchScope).where(
+                MembershipBranchScope.company_id == context.company_id,
+                MembershipBranchScope.branch_id == branch.id,
+                MembershipBranchScope.membership_id.in_(before),
+            )
+        )
+    session.add_all(
+        [
+            MembershipBranchScope(
+                company_id=context.company_id,
+                membership_id=membership_id,
+                branch_id=branch.id,
+            )
+            for membership_id in requested
+        ]
+    )
+    branch.version += 1
+    session.add(
+        AuditLog(
+            company_id=context.company_id,
+            actor_membership_id=context.membership.id,
+            action="branch.supervisors_replaced",
+            target_type="branch",
+            target_id=branch.id,
+            details={
+                "before": sorted(str(value) for value in before),
+                "after": sorted(str(value) for value in requested),
+            },
+        )
+    )
+    await session.commit()
+    return BranchSupervisorsResponse(
+        branch_id=branch.id,
+        membership_ids=sorted(requested, key=str),
+        version=branch.version,
+    )
 
 
 @departments_router.post("", response_model=DepartmentResponse, status_code=201)
