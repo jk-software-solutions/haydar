@@ -114,10 +114,12 @@ export default async function CompanyPortal({
     ["OWNER", "MANAGER", "HR_OFFICER"].includes(role),
   );
   const canEditEmployees = canManage;
-  const canManageSettings = session.roles.includes("OWNER");
-  const canManageGroups = session.permissions.includes("departments:manage");
-  const canManageBranches = session.permissions.includes("branches:manage");
-  const canReviewGeofence = session.permissions.includes("geofence_exits:manage");
+  const roles = session.roles ?? [];
+  const sessionPermissions = session.permissions ?? [];
+  const canManageSettings = roles.includes("OWNER");
+  const canManageGroups = sessionPermissions.includes("departments:manage");
+  const canManageBranches = sessionPermissions.includes("branches:manage");
+  const canReviewGeofence = sessionPermissions.includes("geofence_exits:manage");
   const [
     invitationResponse,
     employeeResponse,
