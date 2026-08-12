@@ -7,7 +7,7 @@ import { authorizedApiFetch, getWebSession, logoutWithApi } from "@/lib/auth/ser
 import { branchAssignmentSchema, branchSchema } from "@/lib/validation/branch-schema";
 import { invitationSchema } from "@/lib/validation/invitation-schema";
 import { companySettingsSchema, employeeProfileSchema } from "@/lib/validation/organization-schema";
-import { shiftSchema } from "@/lib/validation/shift-schema";
+import { shiftAssignmentSchema, shiftSchema } from "@/lib/validation/shift-schema";
 
 export type InvitationState = {
   message: string;
@@ -362,4 +362,50 @@ export async function archiveShiftAction(
   }
   await authorizedApiFetch(`/shifts/${shiftId}?version=${version}`, { method: "DELETE" });
   revalidatePath(`/${locale}/company`);
+}
+
+export async function assignShiftAction(
+  locale: string,
+  _state: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await getWebSession();
+  if (!session || !session.roles.some((role) => ["OWNER", "MANAGER", "HR_OFFICER"].includes(role))) {
+    return { message: locale === "ar" ? "ليس لديك صلاحية." : "Permission denied." };
+  }
+  const targetType = String(formData.get("target_type") ?? "branch");
+  const parsed = shiftAssignmentSchema.safeParse({
+    shift_id: formData.get("shift_id"),
+    target_type: targetType,
+    membership_id: targetType === "employee" ? formData.get("membership_id") : "",
+    branch_id: targetType === "branch" ? formData.get("branch_id") : "",
+    effective_from: formData.get("effective_from"),
+    effective_to: formData.get("effective_to"),
+  });
+  if (!parsed.success) {
+    return { message: "", errors: parsed.error.flatten().fieldErrors };
+  }
+  const payload = {
+    shift_id: parsed.data.shift_id,
+    membership_id: parsed.data.target_type === "employee" ? parsed.data.membership_id : null,
+    branch_id: parsed.data.target_type === "branch" ? parsed.data.branch_id : null,
+    effective_from: parsed.data.effective_from,
+    effective_to: parsed.data.effective_to,
+  };
+  const response = await authorizedApiFetch("/shifts/assignments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const problem = await response.json().catch(() => ({})) as { detail?: string };
+    return {
+      message: problem.detail ?? (locale === "ar" ? "تعذر تعيين الوردية." : "Shift assignment failed."),
+    };
+  }
+  revalidatePath(`/${locale}/company`);
+  return {
+    message: locale === "ar" ? "تم تعيين الوردية." : "Shift assigned.",
+    success: true,
+  };
 }

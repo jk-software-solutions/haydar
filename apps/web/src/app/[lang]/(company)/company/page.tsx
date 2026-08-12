@@ -19,6 +19,7 @@ import {
   updateNotificationPreferencesAction,
 } from "./operations-actions";
 import { OperationsDashboard, type ReportFilters } from "./operations-dashboard";
+import { ShiftAssignmentForm, type ShiftAssignment } from "./shift-assignment-form";
 import { ShiftForm } from "./shift-form";
 
 type Invitation = {
@@ -139,6 +140,7 @@ export default async function CompanyPortal({
     notificationsResponse,
     notificationPreferencesResponse,
     branchSupervisorsResponse,
+    shiftAssignmentsResponse,
   ] = await Promise.all([
     canManage ? authorizedApiFetch("/invitations") : Promise.resolve(null),
     authorizedApiFetch("/employees?page_size=100"),
@@ -159,6 +161,7 @@ export default async function CompanyPortal({
     canManageBranches
       ? authorizedApiFetch("/branches/management/supervisors")
       : Promise.resolve(null),
+    canEditEmployees ? authorizedApiFetch("/shifts/assignments") : Promise.resolve(null),
   ]);
   const invitationPayload: { items: Invitation[] } = invitationResponse?.ok
     ? ((await invitationResponse.json()) as { items: Invitation[] })
@@ -205,6 +208,9 @@ export default async function CompanyPortal({
       };
   const branchSupervisorAssignments: BranchSupervisorAssignment[] = branchSupervisorsResponse?.ok
     ? ((await branchSupervisorsResponse.json()) as BranchSupervisorAssignment[])
+    : [];
+  const shiftAssignments: ShiftAssignment[] = shiftAssignmentsResponse?.ok
+    ? ((await shiftAssignmentsResponse.json()) as ShiftAssignment[])
     : [];
   const accessByMember = new Map(accessItems.map((item) => [item.membership_id, item]));
   const rolesFor = (employee: EditableEmployee) =>
@@ -393,6 +399,15 @@ export default async function CompanyPortal({
           <h2>{ar ? "الورديات" : "Shifts"}</h2>
           <p>{ar ? "يحسب الخادم الورديات الليلية وتعارضات التعيين." : "The server calculates overnight shifts and assignment conflicts."}</p>
           {canEditEmployees && <ShiftForm locale={lang} />}
+          {canEditEmployees && (
+            <ShiftAssignmentForm
+              locale={lang}
+              shifts={shiftPayload.items}
+              employees={employeePayload.items}
+              branches={branchPayload.items}
+              assignments={shiftAssignments}
+            />
+          )}
           {shiftPayload.items.length === 0 ? (
             <p>{ar ? "لا توجد ورديات نشطة." : "No active shifts."}</p>
           ) : (

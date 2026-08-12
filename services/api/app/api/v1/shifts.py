@@ -328,6 +328,41 @@ async def my_shift_assignments(
     return [assignment_response(*row) for row in rows]
 
 
+@router.get("/assignments", response_model=list[ShiftAssignmentResponse])
+async def list_shift_assignments(
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+    membership_id: UUID | None = None,
+    branch_id: UUID | None = None,
+) -> list[ShiftAssignmentResponse]:
+    context = tenant_context(auth_session)
+    await require_permission(session, context, Permission.SHIFTS_VIEW)
+    if membership_id is not None:
+        await require_membership_scope(session, context, membership_id)
+    if branch_id is not None:
+        await require_branch_scope(session, context, branch_id)
+    if membership_id is None and branch_id is None:
+        await require_unrestricted_scope(session, context)
+    criteria = [ShiftAssignment.company_id == context.company_id]
+    if membership_id is not None:
+        criteria.append(ShiftAssignment.membership_id == membership_id)
+    if branch_id is not None:
+        criteria.append(ShiftAssignment.branch_id == branch_id)
+    rows = (
+        await session.execute(
+            select(ShiftAssignment, Shift)
+            .join(
+                Shift,
+                (Shift.company_id == ShiftAssignment.company_id)
+                & (Shift.id == ShiftAssignment.shift_id),
+            )
+            .where(*criteria)
+            .order_by(ShiftAssignment.effective_from.desc(), ShiftAssignment.created_at.desc())
+        )
+    ).all()
+    return [assignment_response(*row) for row in rows]
+
+
 @router.post("/assignments", response_model=ShiftAssignmentResponse, status_code=201)
 async def create_shift_assignment(
     payload: CreateShiftAssignmentRequest,

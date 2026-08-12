@@ -107,6 +107,49 @@ async def test_overnight_shift_assignment_conflicts_and_tenant_isolation(
     )
     assert assignment.status_code == 201
 
+    branch_response = await db_client.post(
+        "/api/v1/branches",
+        headers=headers(owner_a),
+        json={
+            "code": "RUH",
+            "name": "Riyadh Branch",
+            "saudi_short_address": "RRRD2929",
+            "full_address": "King Fahd Road, Riyadh",
+            "latitude": "24.713600",
+            "longitude": "46.675300",
+            "geofence_radius_m": 125,
+            "timezone": "Asia/Riyadh",
+            "working_hours": {"sun": ["08:00", "17:00"]},
+        },
+    )
+    assert branch_response.status_code == 201
+    branch = branch_response.json()
+    branch_assignment = await db_client.post(
+        "/api/v1/shifts/assignments",
+        headers=headers(owner_a),
+        json={
+            "shift_id": shift["id"],
+            "branch_id": branch["id"],
+            "effective_from": "2026-08-01",
+            "effective_to": "2026-10-31",
+        },
+    )
+    assert branch_assignment.status_code == 201
+
+    all_assignments = await db_client.get("/api/v1/shifts/assignments", headers=headers(owner_a))
+    assert all_assignments.status_code == 200
+    assert {item["id"] for item in all_assignments.json()} == {
+        assignment.json()["id"],
+        branch_assignment.json()["id"],
+    }
+
+    branch_assignments = await db_client.get(
+        f"/api/v1/shifts/assignments?branch_id={branch['id']}",
+        headers=headers(owner_a),
+    )
+    assert branch_assignments.status_code == 200
+    assert branch_assignments.json()[0]["branch_id"] == branch["id"]
+
     overlapping = await db_client.post(
         "/api/v1/shifts/assignments",
         headers=headers(owner_a),
