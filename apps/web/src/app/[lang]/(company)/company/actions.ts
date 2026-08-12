@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { authorizedApiFetch, getWebSession, logoutWithApi } from "@/lib/auth/server-session";
-import { branchSchema } from "@/lib/validation/branch-schema";
+import { branchAssignmentSchema, branchSchema } from "@/lib/validation/branch-schema";
 import { invitationSchema } from "@/lib/validation/invitation-schema";
 import { companySettingsSchema, employeeProfileSchema } from "@/lib/validation/organization-schema";
 import { shiftSchema } from "@/lib/validation/shift-schema";
@@ -242,6 +242,42 @@ export async function updateBranchAction(
   }
   revalidatePath(`/${locale}/company`);
   return { message: locale === "ar" ? "تم تحديث الفرع." : "Branch updated.", success: true };
+}
+
+export async function assignEmployeeToBranchAction(
+  locale: string,
+  _state: OrganizationActionState,
+  formData: FormData,
+): Promise<OrganizationActionState> {
+  const session = await getWebSession();
+  if (!session?.permissions.includes("assignments:manage")) {
+    return { message: locale === "ar" ? "ليس لديك صلاحية." : "Permission denied." };
+  }
+  const parsed = branchAssignmentSchema.safeParse({
+    membership_id: formData.get("membership_id"),
+    branch_id: formData.get("branch_id"),
+    effective_from: formData.get("effective_from"),
+    reason: formData.get("reason"),
+  });
+  if (!parsed.success) {
+    return { message: "", errors: parsed.error.flatten().fieldErrors };
+  }
+  const response = await authorizedApiFetch("/branches/assignments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(parsed.data),
+  });
+  if (!response.ok) {
+    const problem = await response.json().catch(() => ({})) as { detail?: string };
+    return {
+      message: problem.detail ?? (locale === "ar" ? "تعذر تعيين الموظف للفرع." : "Branch assignment failed."),
+    };
+  }
+  revalidatePath(`/${locale}/company`);
+  return {
+    message: locale === "ar" ? "تم تعيين الموظف للفرع." : "Employee assigned to branch.",
+    success: true,
+  };
 }
 
 export async function replaceBranchSupervisorsAction(

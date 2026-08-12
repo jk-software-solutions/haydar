@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { authorizedApiFetch, getWebSession } from "@/lib/auth/server-session";
 import { canEnterCompanyPortal, type PortalRole } from "@/lib/auth/permissions";
 
 import { archiveBranchAction, archiveShiftAction, logoutAction } from "./actions";
+import { BranchAssignmentForm, type BranchAssignment } from "./branch-assignment-form";
 import { BranchForm } from "./branch-form";
 import { BranchEditForm, type EditableBranch } from "./branch-edit-form";
 import { CompanySettingsForm, type CompanySettings } from "./company-settings-form";
@@ -80,6 +82,7 @@ type NotificationPreferences = {
   quiet_hours_start: string | null;
   quiet_hours_end: string | null;
 };
+type CompanyTab = "employees" | "branches" | "shifts" | "groups" | "operations" | "notifications" | "geofence" | "admin";
 
 export default async function CompanyPortal({
   params,
@@ -103,6 +106,8 @@ export default async function CompanyPortal({
     group_id: reportValue("group_id"),
     status: reportValue("status"),
   };
+  const tabValue = query.tab;
+  const requestedTab = typeof tabValue === "string" ? tabValue : undefined;
   const ar = lang === "ar";
   const session = await getWebSession();
   if (!session) redirect(`/${lang}/login`);
@@ -216,6 +221,72 @@ export default async function CompanyPortal({
   const supervisorsByBranch = new Map(
     branchSupervisorAssignments.map((assignment) => [assignment.branch_id, assignment]),
   );
+  const tabs: { key: CompanyTab; label: string; description: string }[] = [
+    {
+      key: "employees",
+      label: ar ? "الموظفون" : "Employees",
+      description: ar ? "ملفات وصلاحيات" : "Profiles and access",
+    },
+    {
+      key: "branches",
+      label: ar ? "الفروع" : "Branches",
+      description: ar ? "فروع وتعيينات" : "Sites and assignments",
+    },
+    {
+      key: "shifts",
+      label: ar ? "الورديات" : "Shifts",
+      description: ar ? "جداول العمل" : "Schedules",
+    },
+    ...(canManageGroups
+      ? [{
+          key: "groups" as const,
+          label: ar ? "المجموعات" : "Groups",
+          description: ar ? "فرق تشغيلية" : "Operational teams",
+        }]
+      : []),
+    {
+      key: "operations",
+      label: ar ? "العمليات" : "Operations",
+      description: ar ? "حضور ومهام" : "Attendance and work",
+    },
+    {
+      key: "notifications",
+      label: ar ? "الإشعارات" : "Notifications",
+      description: ar ? "تنبيهات" : "Alerts",
+    },
+    ...(canReviewGeofence
+      ? [{
+          key: "geofence" as const,
+          label: ar ? "النطاق" : "Geofence",
+          description: ar ? "مراجعة المغادرة" : "Exit review",
+        }]
+      : []),
+    ...(canManage || canManageSettings
+      ? [{
+          key: "admin" as const,
+          label: ar ? "الإدارة" : "Admin",
+          description: ar ? "دعوات وإعدادات" : "Invites and settings",
+        }]
+      : []),
+  ];
+  const activeTab = tabs.some((tab) => tab.key === requestedTab)
+    ? requestedTab as CompanyTab
+    : "employees";
+  const assignmentEntries =
+    activeTab === "branches" && canEditEmployees
+      ? await Promise.all(
+          employeePayload.items
+            .filter((employee) => employee.role_code !== "OWNER")
+            .map(async (employee) => {
+              const response = await authorizedApiFetch(`/branches/assignments/${employee.membership_id}`);
+              const assignments = response.ok
+                ? ((await response.json()) as BranchAssignment[])
+                : [];
+              return [employee.membership_id, assignments] as const;
+            }),
+        )
+      : [];
+  const assignmentsByMember = Object.fromEntries(assignmentEntries);
   const signOut = logoutAction.bind(null, lang);
 
   return (
@@ -231,7 +302,20 @@ export default async function CompanyPortal({
             <button type="submit">{ar ? "تسجيل الخروج" : "Sign out"}</button>
           </form>
         </header>
-        <section className="portal-section">
+        <nav className="portal-tabs" aria-label={ar ? "أقسام الشركة" : "Company sections"}>
+          {tabs.map((tab) => (
+            <Link
+              aria-current={activeTab === tab.key ? "page" : undefined}
+              className={activeTab === tab.key ? "portal-tab active" : "portal-tab"}
+              href={`/${lang}/company?tab=${tab.key}`}
+              key={tab.key}
+            >
+              <span>{tab.label}</span>
+              <small>{tab.description}</small>
+            </Link>
+          ))}
+        </nav>
+        {activeTab === "employees" && <section className="portal-section">
           <h2>{ar ? "الموظفون" : "Employees"}</h2>
           <p>{ar ? "ملفات الموظفين ضمن شركتك فقط." : "Employee profiles scoped to your company."}</p>
           {employeePayload.items.length === 0 ? (
@@ -265,11 +349,19 @@ export default async function CompanyPortal({
               ))}
             </ul>
           )}
-        </section>
-        <section className="portal-section">
+        </section>}
+        {activeTab === "branches" && <section className="portal-section">
           <h2>{ar ? "الفروع" : "Branches"}</h2>
           <p>{ar ? "الموقع ونطاق الحضور محفوظان في الخادم." : "Location and attendance radius are stored by the server."}</p>
           {canEditEmployees && <BranchForm locale={lang} />}
+          {canEditEmployees && (
+            <BranchAssignmentForm
+              locale={lang}
+              employees={employeePayload.items}
+              branches={branchPayload.items}
+              assignmentsByMember={assignmentsByMember}
+            />
+          )}
           {branchPayload.items.length === 0 ? (
             <p>{ar ? "لا توجد فروع نشطة." : "No active branches."}</p>
           ) : (
@@ -296,8 +388,8 @@ export default async function CompanyPortal({
               })}
             </ul>
           )}
-        </section>
-        <section className="portal-section">
+        </section>}
+        {activeTab === "shifts" && <section className="portal-section">
           <h2>{ar ? "الورديات" : "Shifts"}</h2>
           <p>{ar ? "يحسب الخادم الورديات الليلية وتعارضات التعيين." : "The server calculates overnight shifts and assignment conflicts."}</p>
           {canEditEmployees && <ShiftForm locale={lang} />}
@@ -317,15 +409,15 @@ export default async function CompanyPortal({
               })}
             </ul>
           )}
-        </section>
-        {canManageGroups && (
+        </section>}
+        {activeTab === "groups" && canManageGroups && (
           <GroupManagement
             locale={lang}
             groups={groupPayload.items}
             employees={employeePayload.items}
           />
         )}
-        <OperationsDashboard
+        {activeTab === "operations" && <OperationsDashboard
           locale={lang}
           canManage={canManage}
           employees={employeePayload.items}
@@ -334,8 +426,8 @@ export default async function CompanyPortal({
           departments={departmentPayload.items}
           groups={groupPayload.items}
           reportFilters={reportFilters}
-        />
-        <section className="portal-section">
+        />}
+        {activeTab === "notifications" && <section className="portal-section">
           <div className="portal-header">
             <div>
               <h2>{ar ? "الإشعارات" : "Notifications"}</h2>
@@ -372,8 +464,8 @@ export default async function CompanyPortal({
               ))}
             </ul>
           )}
-        </section>
-        {canReviewGeofence && (
+        </section>}
+        {activeTab === "geofence" && canReviewGeofence && (
           <section className="portal-section">
             <h2>{ar ? "مراجعة مغادرة النطاق" : "Geofence exit review"}</h2>
             <p>
@@ -429,6 +521,7 @@ export default async function CompanyPortal({
             )}
           </section>
         )}
+        {activeTab === "admin" && (canManage || canManageSettings) && <>
         {canManage ? (
           <section className="portal-section">
             <h2>{ar ? "دعوات الموظفين" : "Employee invitations"}</h2>
@@ -456,6 +549,7 @@ export default async function CompanyPortal({
             <CompanySettingsForm settings={settings} locale={lang} />
           </section>
         )}
+        </>}
       </section>
     </main>
   );

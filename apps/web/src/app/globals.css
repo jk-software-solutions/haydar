@@ -75,6 +75,50 @@ textarea {
   margin-bottom: 32px;
 }
 
+.portal-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: #edf5f2;
+}
+
+.portal-tab {
+  display: grid;
+  min-height: 74px;
+  align-content: center;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--foreground);
+  text-decoration: none;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.portal-tab:hover {
+  border-color: rgb(0 107 94 / 25%);
+  background: rgb(255 255 255 / 76%);
+  transform: translateY(-1px);
+}
+
+.portal-tab.active {
+  border-color: rgb(0 107 94 / 28%);
+  background: var(--surface);
+  box-shadow: 0 12px 30px rgb(0 77 67 / 10%);
+}
+
+.portal-tab span {
+  font-weight: 900;
+}
+
+.portal-tab small {
+  color: var(--muted);
+}
+
 .portal-form {
   display: grid;
   gap: 10px;
@@ -204,6 +248,50 @@ textarea {
 .operation-form-card summary {
   cursor: pointer;
   font-weight: 800;
+}
+
+.assignment-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.assignment-form {
+  grid-template-columns: 1.4fr 1.2fr 0.8fr 1.4fr auto;
+  align-items: end;
+}
+
+.assignment-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.assignment-list {
+  display: grid;
+  gap: 8px;
+}
+
+.assignment-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.assignment-row div {
+  display: grid;
+  gap: 3px;
+}
+
+.assignment-row span {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .kanban-grid {
@@ -619,6 +707,7 @@ textarea {
 
   .portal-header,
   .portal-form.inline,
+  .assignment-form,
   .employee-form,
   .settings-form,
   .branch-form,
@@ -636,9 +725,11 @@ textarea {
   }
 
   .operation-list li,
+  .assignment-row,
   .section-heading {
     align-items: stretch;
     flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .branch-list li {

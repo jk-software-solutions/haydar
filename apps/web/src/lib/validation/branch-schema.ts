@@ -13,3 +13,10 @@ export const branchSchema = z.object({
   geofence_radius_m: z.coerce.number().int().min(20).max(10000),
   timezone: z.string().trim().min(1).max(64),
 });
+
+export const branchAssignmentSchema = z.object({
+  membership_id: z.string().uuid(),
+  branch_id: z.string().uuid(),
+  effective_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  reason: z.string().trim().min(5).max(1000),
+});
