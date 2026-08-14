@@ -481,6 +481,117 @@ textarea {
   font-weight: 700;
 }
 
+.location-picker {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(14, 122, 103, 0.08), rgba(14, 122, 103, 0.02)),
+    var(--surface);
+}
+
+.location-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.location-picker-header div {
+  display: grid;
+  gap: 4px;
+}
+
+.location-picker-header span,
+.location-picker-hint,
+.location-picker small {
+  color: var(--muted);
+}
+
+.location-map {
+  position: relative;
+  height: 320px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #dcece9;
+  cursor: crosshair;
+  isolation: isolate;
+}
+
+.location-map:focus-visible {
+  outline: 3px solid rgba(14, 122, 103, 0.35);
+  outline-offset: 3px;
+}
+
+.location-map-tile {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  background-position: center;
+  background-size: cover;
+  user-select: none;
+  pointer-events: none;
+}
+
+.location-map-pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  border: 3px solid #fff;
+  border-radius: 999px 999px 999px 0;
+  background: var(--primary);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.28);
+  transform: translate(-50%, -100%) rotate(-45deg);
+}
+
+.location-map-pin::after {
+  position: absolute;
+  inset: 5px;
+  border-radius: 999px;
+  background: #fff;
+  content: "";
+}
+
+.location-map-controls {
+  position: absolute;
+  top: 10px;
+  inset-inline-end: 10px;
+  z-index: 3;
+  display: grid;
+  gap: 6px;
+}
+
+.location-map-controls button {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+}
+
+.location-picker-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.location-picker-readout span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #e5f1ef;
+  color: var(--muted);
+  font-weight: 700;
+}
+
 .weekday-field {
   display: flex;
   grid-column: 1 / -1;

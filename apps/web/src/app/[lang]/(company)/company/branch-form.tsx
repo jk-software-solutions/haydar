@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 
 import { createBranchAction, type OrganizationActionState } from "./actions";
+import { LocationMapPicker } from "./location-map-picker";
 
 const initialState: OrganizationActionState = { message: "" };
 
@@ -16,8 +17,7 @@ export function BranchForm({ locale }: { locale: string }) {
       <label>{ar ? "اسم الفرع" : "Branch name"}<input name="name" required /></label>
       <label>{ar ? "العنوان المختصر" : "Saudi short address"}<input name="saudi_short_address" /></label>
       <label>{ar ? "العنوان الكامل" : "Full address"}<input name="full_address" required /></label>
-      <label>{ar ? "خط العرض" : "Latitude"}<input name="latitude" type="number" step="0.000001" required /></label>
-      <label>{ar ? "خط الطول" : "Longitude"}<input name="longitude" type="number" step="0.000001" required /></label>
+      <LocationMapPicker locale={locale} />
       <label>{ar ? "نطاق الحضور بالمتر" : "Geofence radius (m)"}<input name="geofence_radius_m" type="number" min="20" max="10000" defaultValue="100" required /></label>
       <label>{ar ? "المنطقة الزمنية" : "Timezone"}<input name="timezone" defaultValue="Asia/Riyadh" required /></label>
       <button type="submit" disabled={pending}>{pending ? (ar ? "جارٍ الإنشاء..." : "Creating...") : (ar ? "إضافة الفرع" : "Add branch")}</button>

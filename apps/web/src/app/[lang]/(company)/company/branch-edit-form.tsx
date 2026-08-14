@@ -7,6 +7,7 @@ import {
   updateBranchAction,
   type OrganizationActionState,
 } from "./actions";
+import { LocationMapPicker } from "./location-map-picker";
 
 export type BranchMemberOption = { id: string; name: string };
 
@@ -59,8 +60,7 @@ export function BranchEditForm({
         <label>{ar ? "اسم الفرع" : "Branch name"}<input name="name" defaultValue={branch.name} required /></label>
         <label>{ar ? "العنوان المختصر" : "Saudi short address"}<input name="saudi_short_address" defaultValue={branch.saudi_short_address ?? ""} /></label>
         <label>{ar ? "العنوان الكامل" : "Full address"}<input name="full_address" defaultValue={branch.full_address} required /></label>
-        <label>{ar ? "خط العرض" : "Latitude"}<input name="latitude" type="number" step="0.000001" defaultValue={branch.latitude} required /></label>
-        <label>{ar ? "خط الطول" : "Longitude"}<input name="longitude" type="number" step="0.000001" defaultValue={branch.longitude} required /></label>
+        <LocationMapPicker locale={locale} initialLatitude={branch.latitude} initialLongitude={branch.longitude} />
         <label>{ar ? "نطاق الحضور بالمتر" : "Geofence radius (m)"}<input name="geofence_radius_m" type="number" min="20" max="10000" defaultValue={branch.geofence_radius_m} required /></label>
         <label>{ar ? "المنطقة الزمنية" : "Timezone"}<input name="timezone" defaultValue={branch.timezone} required /></label>
         <label>
