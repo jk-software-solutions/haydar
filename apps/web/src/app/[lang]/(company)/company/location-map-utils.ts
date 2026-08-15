@@ -47,3 +47,13 @@ export function worldPixelsToCoordinates(
 export function roundedCoordinate(value: number): string {
   return value.toFixed(6);
 }
+
+export function isSaudiShortAddress(value: string): boolean {
+  return /^[A-Z]{4}\d{4}$/i.test(value.trim());
+}
+
+export function normalizeLocationSearchQuery(value: string): string {
+  const query = value.trim().replace(/\s+/g, " ");
+  if (!query) return "";
+  return isSaudiShortAddress(query) ? `${query.toUpperCase()} Saudi Arabia` : query;
+}

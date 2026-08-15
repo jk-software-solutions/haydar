@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   coordinatesToWorldPixels,
+  isSaudiShortAddress,
+  normalizeLocationSearchQuery,
   roundedCoordinate,
   worldPixelsToCoordinates,
 } from "./location-map-utils";
@@ -19,5 +21,15 @@ describe("location map utilities", () => {
   it("formats coordinates for branch form submission", () => {
     expect(roundedCoordinate(24.7136004)).toBe("24.713600");
     expect(roundedCoordinate(46.6753006)).toBe("46.675301");
+  });
+
+  it("detects and normalizes Saudi short address search", () => {
+    expect(isSaudiShortAddress("GGDA3610")).toBe(true);
+    expect(isSaudiShortAddress("GGDA-3610")).toBe(false);
+    expect(normalizeLocationSearchQuery(" ggda3610 ")).toBe("GGDA3610 Saudi Arabia");
+  });
+
+  it("keeps regular place search text normalized", () => {
+    expect(normalizeLocationSearchQuery("  King   Fahd   Road  ")).toBe("King Fahd Road");
   });
 });

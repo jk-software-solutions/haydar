@@ -511,15 +511,71 @@ textarea {
   color: var(--muted);
 }
 
+.location-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.location-search input {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 12px 16px;
+  background: #fff;
+  color: var(--text);
+}
+
+.location-search-results {
+  display: grid;
+  max-height: 210px;
+  overflow: auto;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.location-search-results button {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: #f8fbfa;
+  color: var(--text);
+  text-align: start;
+}
+
+.location-search-results button:hover,
+.location-search-results button:focus-visible {
+  border-color: rgba(14, 122, 103, 0.35);
+  background: #eef8f6;
+}
+
+.location-search-results span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .location-map {
   position: relative;
-  height: 320px;
+  height: 360px;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: #dcece9;
-  cursor: crosshair;
+  cursor: grab;
   isolation: isolate;
+  touch-action: none;
+  user-select: none;
+}
+
+.location-map.dragging {
+  cursor: grabbing;
 }
 
 .location-map:focus-visible {
@@ -559,7 +615,7 @@ textarea {
   content: "";
 }
 
-.location-map-controls {
+.location-map-tools {
   position: absolute;
   top: 10px;
   inset-inline-end: 10px;
@@ -568,8 +624,8 @@ textarea {
   gap: 6px;
 }
 
-.location-map-controls button {
-  width: 38px;
+.location-map-tools button {
+  min-width: 38px;
   height: 38px;
   padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.85);
@@ -862,6 +918,25 @@ textarea {
 
   .branch-list li {
     grid-template-columns: 1fr;
+  }
+
+  .location-picker-header,
+  .location-search {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .location-picker-header {
+    display: grid;
+  }
+
+  .location-map {
+    height: 300px;
+  }
+
+  .location-map-tools {
+    grid-template-columns: repeat(3, auto);
+    inset-inline: 10px auto;
   }
 
   .invitation-list li {
