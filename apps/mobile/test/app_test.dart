@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dio/dio.dart';
 import 'package:haydar/app/haydar_app.dart';
 import 'package:haydar/core/network/api_health.dart';
 import 'package:haydar/features/auth/application/auth_api.dart';
 import 'package:haydar/features/auth/application/auth_controller.dart';
 import 'package:haydar/features/devices/application/device_api.dart';
 import 'package:haydar/features/home/presentation/role_workspace_screen.dart';
+import 'package:haydar/features/organization/application/employee_profile_api.dart';
 import 'package:haydar/l10n/generated/app_localizations.dart';
 
 Widget buildTestApp() {
@@ -28,13 +30,13 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('HADIR | حاضر'), findsOneWidget);
+    expect(find.text('DawamTech | دوام تك'), findsOneWidget);
     expect(find.text('حضور أوضح، وإدارة أسهل'), findsOneWidget);
     expect(find.text('الواجهة الأساسية جاهزة'), findsOneWidget);
-    expect(find.text('الاتصال المحلي وقاعدة البيانات جاهزان'), findsOneWidget);
+    expect(find.text('الخادم وقاعدة البيانات جاهزان'), findsOneWidget);
     expect(find.text('المتابعة لتسجيل الدخول'), findsOneWidget);
     expect(
-      Directionality.of(tester.element(find.text('HADIR | حاضر'))),
+      Directionality.of(tester.element(find.text('DawamTech | دوام تك'))),
       TextDirection.rtl,
     );
   });
@@ -46,14 +48,15 @@ void main() {
     await tester.pump();
     await tester.pump();
 
+    await tester.ensureVisible(find.text('English'));
     await tester.tap(find.text('English'));
     await tester.pump();
 
     expect(find.text('Attendance, clearly managed'), findsOneWidget);
-    expect(find.text('Local API and database are reachable'), findsOneWidget);
+    expect(find.text('Server and database are ready'), findsOneWidget);
     expect(find.text('Continue to login'), findsOneWidget);
     expect(
-      Directionality.of(tester.element(find.text('HADIR | حاضر'))),
+      Directionality.of(tester.element(find.text('DawamTech | دوام تك'))),
       TextDirection.ltr,
     );
   });
@@ -111,6 +114,9 @@ void main() {
               requiresApproval: false,
             ),
           ),
+          employeeProfileApiProvider.overrideWith(
+            (ref) => _FakeEmployeeProfileApi(),
+          ),
         ],
         child: const MaterialApp(
           locale: Locale('ar'),
@@ -136,6 +142,11 @@ void main() {
     await tester.tap(find.text('المزيد'));
     await tester.pumpAndSettle();
     expect(find.text('دعوات الموظفين'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('طلبات تغيير الأجهزة'),
+      240,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('طلبات تغيير الأجهزة'), findsOneWidget);
   });
 
@@ -166,6 +177,9 @@ void main() {
               requiresApproval: false,
             ),
           ),
+          employeeProfileApiProvider.overrideWith(
+            (ref) => _FakeEmployeeProfileApi(),
+          ),
         ],
         child: const MaterialApp(
           locale: Locale('ar'),
@@ -194,4 +208,27 @@ void main() {
     expect(find.text('employee@example.com'), findsOneWidget);
     expect(find.text('دعوات الموظفين'), findsNothing);
   });
+}
+
+class _FakeEmployeeProfileApi extends EmployeeProfileApi {
+  _FakeEmployeeProfileApi() : super(Dio());
+
+  @override
+  Future<EmployeeProfileData> me(AuthSession session) async =>
+      const EmployeeProfileData(
+        displayName: 'Hadir Employee',
+        employeeNumber: null,
+        jobTitle: null,
+        avatarFileId: null,
+        version: 1,
+      );
+
+  @override
+  Future<List<EmployeeBranchAssignment>> myBranches(
+    AuthSession session,
+  ) async => const <EmployeeBranchAssignment>[];
+
+  @override
+  Future<List<EmployeeShiftAssignment>> myShifts(AuthSession session) async =>
+      const <EmployeeShiftAssignment>[];
 }

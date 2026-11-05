@@ -19,6 +19,7 @@ BUILTIN_PLANS: tuple[dict[str, object], ...] = (
         "features": {
             "gps": True,
             "qr": True,
+            "wifi": True,
             "tasks": True,
             "documents": True,
             "reports": "basic",
@@ -33,7 +34,7 @@ BUILTIN_PLANS: tuple[dict[str, object], ...] = (
         "monthly_price": 19_900,
         "annual_price": 199_000,
         "limits": {"employees": 50, "branches": 3, "storage_mb": 2048},
-        "features": {"gps": True, "qr": True, "tasks": True, "documents": True, "reports": "basic"},
+        "features": {"gps": True, "qr": True, "wifi": True, "tasks": True, "documents": True, "reports": "basic"},
         "support_level": "standard",
     },
     {
@@ -47,6 +48,7 @@ BUILTIN_PLANS: tuple[dict[str, object], ...] = (
         "features": {
             "gps": True,
             "qr": True,
+            "wifi": True,
             "tasks": True,
             "documents": True,
             "reports": "advanced",
@@ -64,6 +66,7 @@ BUILTIN_PLANS: tuple[dict[str, object], ...] = (
         "features": {
             "gps": True,
             "qr": True,
+            "wifi": True,
             "tasks": True,
             "documents": True,
             "reports": "advanced",
@@ -128,8 +131,12 @@ async def active_subscription(
     return (row[0], row[1]) if row else None
 
 
-def plan_limit(plan: SubscriptionPlan, name: str) -> int:
-    value = plan.limits.get(name, 0)
+def plan_limit(
+    plan: SubscriptionPlan,
+    name: str,
+    limits_override: dict[str, object] | None = None,
+) -> int:
+    value = (limits_override or {}).get(name, plan.limits.get(name, 0))
     if isinstance(value, bool):
         return int(value)
     if isinstance(value, (int, float, str)):

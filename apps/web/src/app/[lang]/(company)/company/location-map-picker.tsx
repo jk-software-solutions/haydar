@@ -59,6 +59,8 @@ export function LocationMapPicker({
   const ar = locale === "ar";
   const mapRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
+  const pendingSelectedRef = useRef<Coordinates | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
   const initialLat = validNumber(initialLatitude);
   const initialLng = validNumber(initialLongitude);
   const [selected, setSelected] = useState<Coordinates>(
@@ -88,6 +90,12 @@ export function LocationMapPicker({
     const observer = new ResizeObserver(updateSize);
     observer.observe(element);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => () => {
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
   }, []);
 
   const centerPixels = useMemo(
@@ -124,7 +132,15 @@ export function LocationMapPicker({
     const x = centerPixels.x + (clientX - rect.left - rect.width / 2);
     const y = centerPixels.y + (clientY - rect.top - rect.height / 2);
     const next = worldPixelsToCoordinates(x, y, zoom);
-    setSelected(next);
+    pendingSelectedRef.current = next;
+    if (animationFrameRef.current === null) {
+      animationFrameRef.current = requestAnimationFrame(() => {
+        animationFrameRef.current = null;
+        const pending = pendingSelectedRef.current;
+        pendingSelectedRef.current = null;
+        if (pending) setSelected(pending);
+      });
+    }
     setMessage(ar ? "تم اختيار الموقع من الخريطة." : "Location selected from the map.");
   };
 
@@ -157,9 +173,12 @@ export function LocationMapPicker({
     setSearchResults([]);
     setMessage(ar ? "جارٍ البحث..." : "Searching...");
     try {
-      const response = await fetch(`/api/geocode?q=${encodeURIComponent(query)}&lang=${locale}`, {
+      // Nginx reserves /api/* for the FastAPI service. The Next route is
+      // intentionally exposed at /geocode so the browser reaches Next.js.
+      const response = await fetch(`/geocode?q=${encodeURIComponent(query)}&lang=${locale}`, {
         cache: "no-store",
       });
+      if (!response.ok) throw new Error(`geocode_${response.status}`);
       const payload = (await response.json()) as { results?: GeocodeResult[] };
       const results = payload.results ?? [];
       setSearchResults(results);
@@ -229,6 +248,13 @@ export function LocationMapPicker({
     event.currentTarget.releasePointerCapture(event.pointerId);
     dragRef.current = null;
     setIsDragging(false);
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    const pending = pendingSelectedRef.current;
+    pendingSelectedRef.current = null;
+    if (pending) setSelected(pending);
     if (drag.moved) {
       setMessage(ar ? "تم تحديث الموقع بعد تحريك الخريطة." : "Location updated after moving the map.");
     } else {

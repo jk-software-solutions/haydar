@@ -1,0 +1,12 @@
+/** Serve the branded icon directly. A relative redirect would be rewritten to
+ * localhost by some reverse proxies, so keep this endpoint self-contained. */
+const ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#006b5e"/><path d="M18 34c0-10 6-18 14-18s14 8 14 18v12h-8V34c0-5-2-10-6-10s-6 5-6 10v12h-8V34Z" fill="#fff"/><circle cx="32" cy="35" r="4" fill="#f59e0b"/></svg>`;
+
+export function GET() {
+  return new Response(ICON, {
+    headers: {
+      "Content-Type": "image/svg+xml",
+      "Cache-Control": "public, max-age=86400",
+    },
+  });
+}

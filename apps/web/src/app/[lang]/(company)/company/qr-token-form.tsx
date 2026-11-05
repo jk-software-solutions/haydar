@@ -14,6 +14,9 @@ export function QrTokenForm({ locale, branches }: { locale: string; branches: { 
     createQrTokenAction.bind(null, locale),
     {},
   );
+  const qrImageUrl = state.token
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=12&data=${encodeURIComponent(state.token)}`
+    : "";
   return (
     <div className="operation-form-card">
       <form action={submit} className="portal-form inline">
@@ -31,8 +34,15 @@ export function QrTokenForm({ locale, branches }: { locale: string; branches: { 
       </form>
       {state.token && (
         <div className="activation-token">
-          <strong>{ar ? "رمز مؤقت للفرع" : "Temporary branch token"}</strong>
+          <strong>{ar ? "رمز QR مؤقت للفرع" : "Temporary branch QR code"}</strong>
+          <img className="qr-code-preview" src={qrImageUrl} alt={ar ? "رمز QR للحضور" : "Attendance QR code"} />
+          <small>
+            {ar
+              ? "يعرضه المدير في الفرع، ثم يمسحه الموظف من تطبيق حاضر لتسجيل الحضور أو الانصراف."
+              : "Show this at the branch; employees scan it in the Hadir app to check in or out."}
+          </small>
           <code>{state.token}</code>
+          <small>{ar ? "الرمز النصي احتياطي عند تعذر قراءة QR." : "The text token is a fallback if QR scanning is unavailable."}</small>
           <small>{ar ? "ينتهي" : "Expires"}: {state.expiresAt}</small>
           {state.tokenId && (
             <form action={revokeQrTokenAction.bind(null, locale, state.tokenId)}>

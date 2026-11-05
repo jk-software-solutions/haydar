@@ -110,6 +110,9 @@ class DeviceChange {
     required this.id,
     required this.reason,
     required this.status,
+    required this.employeeName,
+    required this.employeeEmail,
+    required this.requestedDeviceName,
   });
 
   factory DeviceChange.fromJson(Map<String, dynamic> json) {
@@ -117,10 +120,16 @@ class DeviceChange {
       id: json['id'] as String? ?? '',
       reason: json['reason'] as String? ?? '',
       status: json['status'] as String? ?? '',
+      employeeName: json['employee_name'] as String? ?? '',
+      employeeEmail: json['employee_email'] as String? ?? '',
+      requestedDeviceName: json['requested_device_name'] as String? ?? '',
     );
   }
 
   final String id;
   final String reason;
   final String status;
+  final String employeeName;
+  final String employeeEmail;
+  final String requestedDeviceName;
 }

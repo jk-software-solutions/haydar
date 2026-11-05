@@ -20,10 +20,26 @@ import {
 import { QrTokenForm } from "./qr-token-form";
 import { FileUploadForm } from "./file-upload-form";
 import { authorizedApiFetch } from "@/lib/auth/server-session";
+import {
+  billingCycleLabel,
+  documentTypeLabel,
+  formatLimitValue,
+  permissionTypeLabel,
+  priorityLabel,
+  reportTypeLabel,
+  statusLabel,
+  subscriptionLimitLabel,
+} from "./display-labels";
 
-type Employee = { membership_id: string; display_name: string; role_code: string };
+type Employee = { membership_id: string; display_name: string; role_code: string; membership_status: string };
 type Branch = { id: string; name: string };
-type Shift = { id: string; name: string };
+type Shift = {
+  id: string;
+  name: string;
+  start_time: string;
+  end_time: string;
+  recurrence?: { periods?: { start_time?: string; end_time?: string }[] };
+};
 type NamedOption = { id: string; name: string };
 export type ReportFilters = {
   date_from?: string;
@@ -56,6 +72,7 @@ type Overview = {
 type Attendance = {
   id: string;
   membership_id: string;
+  shift_id: string;
   work_date: string;
   status: string;
   checked_in_at: string | null;
@@ -82,6 +99,7 @@ type Task = {
   status: string;
   due_at: string | null;
   assignee_ids: string[];
+  completion_attachment_file_id: string | null;
   version: number;
   latest_extension: {
     reason: string;
@@ -97,6 +115,7 @@ type PermissionRequest = {
   starts_at: string;
   ends_at: string;
   reason: string;
+  attachment_file_id: string | null;
   status: string;
 };
 type LeaveType = { id: string; code: string; name: string; default_days: number };
@@ -130,12 +149,15 @@ type ExportJob = {
   status: string;
   progress_percent: number;
   filename: string | null;
+  created_at: string;
   expires_at: string;
+  filters: Record<string, unknown>;
 };
 type Subscription = {
   status: string;
   billing_cycle: string;
   ends_at: string;
+  limits_override?: Record<string, unknown> | null;
   plan: { name: string; code: string; limits: Record<string, unknown>; features: Record<string, unknown> };
 };
 
@@ -156,10 +178,44 @@ function formatDate(value: string | null, locale: string): string {
   }).format(new Date(value));
 }
 
+function exportDate(value: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale === "ar" ? "ar-SA" : "en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function exportPeriod(job: ExportJob, ar: boolean): string {
+  const from = typeof job.filters?.date_from === "string" ? job.filters.date_from : "";
+  const to = typeof job.filters?.date_to === "string" ? job.filters.date_to : "";
+  if (from && to) return ar ? `الفترة: من ${from} إلى ${to}` : `Period: ${from} to ${to}`;
+  if (from) return ar ? `الفترة: من ${from}` : `Period: from ${from}`;
+  if (to) return ar ? `الفترة: حتى ${to}` : `Period: through ${to}`;
+  return ar ? "الفترة: كل التواريخ" : "Period: all dates";
+}
+
+function formatTime(value: string | null, locale: string): string {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat(locale === "ar" ? "ar-SA" : "en-GB", {
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function shiftPeriods(shift: Shift | undefined): { start: string; end: string }[] {
+  const periods = shift?.recurrence?.periods
+    ?.filter((period) => period.start_time && period.end_time)
+    .map((period) => ({ start: period.start_time!, end: period.end_time! }));
+  return periods?.length ? periods : shift ? [{ start: shift.start_time, end: shift.end_time }] : [];
+}
+
+const reportExportTypes = ["attendance", "geofence_exits", "leave", "permissions", "tasks", "documents", "branches", "shifts"];
+const documentTypes = ["residency", "passport", "medical_insurance", "employment_contract", "driving_license", "vehicle_insurance", "custom"];
+
 export async function OperationsDashboard({
   locale,
   canManage,
   employees,
+  taskRecipients = [],
   branches,
   shifts,
   departments,
@@ -169,6 +225,7 @@ export async function OperationsDashboard({
   locale: string;
   canManage: boolean;
   employees: Employee[];
+  taskRecipients?: NamedOption[];
   branches: Branch[];
   shifts: Shift[];
   departments: NamedOption[];
@@ -246,6 +303,7 @@ export async function OperationsDashboard({
     { key: "tasks", label: ar ? "المهام" : "Tasks", report: taskReport },
     { key: "documents", label: ar ? "الوثائق" : "Documents", report: documentReport },
   ];
+  const shiftById = new Map(shifts.map((shift) => [shift.id, shift]));
 
   return (
     <>
@@ -305,8 +363,29 @@ export async function OperationsDashboard({
         )}
         <div className="data-table-wrap">
           <table className="data-table">
-            <thead><tr><th>{ar ? "الموظف" : "Employee"}</th><th>{ar ? "التاريخ" : "Date"}</th><th>{ar ? "الحالة" : "Status"}</th><th>{ar ? "العمل" : "Worked"}</th><th>{ar ? "التأخير" : "Late"}</th></tr></thead>
-            <tbody>{attendance.slice(0, 50).map((item) => <tr key={item.id}><td>{employeeName(employees, item.membership_id)}</td><td>{formatDate(item.work_date, locale)}</td><td><span className="status-pill">{item.status}</span>{item.is_manual ? " · Manual" : ""}</td><td>{item.worked_minutes}m</td><td>{item.late_minutes}m</td></tr>)}</tbody>
+            <thead>
+              <tr>
+                <th>{ar ? "الموظف" : "Employee"}</th>
+                <th>{ar ? "الفترة 1 حضور" : "Period 1 in"}</th>
+                <th>{ar ? "الفترة 1 انصراف" : "Period 1 out"}</th>
+                <th>{ar ? "الفترة 2 حضور" : "Period 2 in"}</th>
+                <th>{ar ? "الفترة 2 انصراف" : "Period 2 out"}</th>
+                <th>{ar ? "ملاحظات" : "Notes"}</th>
+              </tr>
+            </thead>
+            <tbody>{attendance.slice(0, 50).map((item) => {
+              const periods = shiftPeriods(shiftById.get(item.shift_id));
+              return (
+                <tr key={item.id}>
+                  <td>{employeeName(employees, item.membership_id)}<br /><small>{formatDate(item.work_date, locale)}</small></td>
+                  <td>{formatTime(item.checked_in_at, locale)}<br /><small>{periods[0]?.start?.slice(0, 5) ?? "—"}</small></td>
+                  <td>{formatTime(item.checked_out_at, locale)}<br /><small>{periods[0]?.end?.slice(0, 5) ?? "—"}</small></td>
+                  <td>—<br /><small>{periods[1]?.start?.slice(0, 5) ?? "—"}</small></td>
+                  <td>—<br /><small>{periods[1]?.end?.slice(0, 5) ?? "—"}</small></td>
+                  <td><span className="status-pill">{statusLabel(item.status, ar)}</span>{item.is_manual ? ` · ${ar ? "يدوي" : "Manual"}` : ""} · {ar ? "تأخير" : "Late"} {item.late_minutes}m · {ar ? "عمل" : "Worked"} {item.worked_minutes}m</td>
+                </tr>
+              );
+            })}</tbody>
           </table>
           {attendance.length === 0 && <p className="empty-state">{ar ? "لا توجد سجلات حضور بعد." : "No attendance records yet."}</p>}
         </div>
@@ -325,7 +404,7 @@ export async function OperationsDashboard({
             <button type="submit">{ar ? "إرسال طلب عاجل" : "Send urgent request"}</button>
           </form>
           <div className="data-table-wrap">
-            <table className="data-table"><thead><tr><th>{ar ? "الموظف" : "Employee"}</th><th>{ar ? "الحالة" : "Status"}</th><th>{ar ? "المهلة" : "Deadline"}</th><th>{ar ? "المسافة" : "Distance"}</th></tr></thead><tbody>{presenceResults.map((item) => <tr key={item.id}><td>{employeeName(employees, item.membership_id)}</td><td><span className="status-pill">{item.status}</span></td><td>{formatDate(item.deadline_at, locale)}</td><td>{item.distance_m === null ? "—" : `${item.distance_m}m`}</td></tr>)}</tbody></table>
+            <table className="data-table"><thead><tr><th>{ar ? "الموظف" : "Employee"}</th><th>{ar ? "الحالة" : "Status"}</th><th>{ar ? "المهلة" : "Deadline"}</th><th>{ar ? "المسافة" : "Distance"}</th></tr></thead><tbody>{presenceResults.map((item) => <tr key={item.id}><td>{employeeName(employees, item.membership_id)}</td><td><span className="status-pill">{statusLabel(item.status, ar)}</span></td><td>{formatDate(item.deadline_at, locale)}</td><td>{item.distance_m === null ? "—" : `${item.distance_m}m`}</td></tr>)}</tbody></table>
             {presenceResults.length === 0 && <p className="empty-state">{ar ? "لا توجد طلبات إثبات تواجد بعد." : "No presence challenges yet."}</p>}
           </div>
         </section>
@@ -333,14 +412,14 @@ export async function OperationsDashboard({
 
       <section className="portal-section" aria-labelledby="tasks-title">
         <div className="section-heading"><h2 id="tasks-title">{ar ? "المهام" : "Tasks"}</h2><span className="status-pill">{tasks.length}</span></div>
-        {canManage && (
+        {(canManage || taskRecipients.length > 0) && (
           <form action={taskAction} className="portal-form operation-form">
             <input name="title" required placeholder={ar ? "عنوان المهمة" : "Task title"} />
             <textarea name="description" required placeholder={ar ? "الوصف" : "Description"} />
-            <select name="priority" defaultValue="normal"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select>
+            <select name="priority" defaultValue="normal"><option value="low">{priorityLabel("low", ar)}</option><option value="normal">{priorityLabel("normal", ar)}</option><option value="high">{priorityLabel("high", ar)}</option><option value="urgent">{priorityLabel("urgent", ar)}</option></select>
             <input name="due_at" type="datetime-local" aria-label={ar ? "موعد التسليم" : "Due date"} />
-            <select name="membership_ids" required aria-label={ar ? "الموظف" : "Assignee"}><option value="">{ar ? "اختر الموظف" : "Select assignee"}</option>{employees.map((employee) => <option key={employee.membership_id} value={employee.membership_id}>{employee.display_name}</option>)}</select>
-            <button type="submit">{ar ? "إنشاء المهمة" : "Create task"}</button>
+            <select name="membership_ids" required aria-label={ar ? "إرسال إلى" : "Send to"}><option value="">{ar ? "اختر المستلم" : "Select recipient"}</option>{(canManage ? employees.filter((employee) => employee.membership_status === "active" && employee.role_code !== "OWNER").map((employee) => ({ id: employee.membership_id, name: employee.display_name })) : taskRecipients).map((recipient) => <option key={recipient.id} value={recipient.id}>{recipient.name}</option>)}</select>
+            <button type="submit">{canManage ? (ar ? "إرسال المهمة" : "Send task") : (ar ? "إرسال طلب للمدير" : "Send request to manager")}</button>
           </form>
         )}
         <div className="kanban-grid">
@@ -348,11 +427,16 @@ export async function OperationsDashboard({
             const statusAction = updateTaskStatusAction.bind(null, locale, task.id, task.version);
             return (
               <article className="task-card" key={task.id}>
-                <div className="section-heading"><strong>{task.title}</strong><span className={`status-pill ${task.priority === "urgent" ? "urgent" : ""}`}>{task.priority}</span></div>
-                <p>{task.status} · {formatDate(task.due_at, locale)}</p>
+                <div className="section-heading"><strong>{task.title}</strong><span className={`status-pill ${task.priority === "urgent" ? "urgent" : ""}`}>{priorityLabel(task.priority, ar)}</span></div>
+                <p>{statusLabel(task.status, ar)} · {formatDate(task.due_at, locale)}</p>
                 <small>{task.assignee_ids.map((id) => employeeName(employees, id)).join(", ")}</small>
+                {task.completion_attachment_file_id && (
+                  <a className="language-link" href={`/api/files/${task.completion_attachment_file_id}`}>
+                    {ar ? "تنزيل الإيصال المرفق" : "Download attached receipt"}
+                  </a>
+                )}
                 <form action={statusAction} className="inline-action">
-                  <select name="status" defaultValue={task.status}><option value="viewed">Viewed</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="needs_more_time">Needs more time</option><option value="blocked">Blocked</option><option value="postponed">Postponed</option></select>
+                  <select name="status" defaultValue={task.status}><option value="viewed">{statusLabel("viewed", ar)}</option><option value="in_progress">{statusLabel("in_progress", ar)}</option><option value="completed">{statusLabel("completed", ar)}</option><option value="needs_more_time">{statusLabel("needs_more_time", ar)}</option><option value="blocked">{statusLabel("blocked", ar)}</option><option value="postponed">{statusLabel("postponed", ar)}</option></select>
                   <input name="reason" placeholder={ar ? "السبب عند الحاجة" : "Reason when required"} />
                   <input name="requested_due_at" type="datetime-local" aria-label={ar ? "الموعد المطلوب للتمديد" : "Requested extension due date"} />
                   <button type="submit">{ar ? "تحديث" : "Update"}</button>
@@ -385,13 +469,14 @@ export async function OperationsDashboard({
         <div>
           <h2>{ar ? "الاستئذان" : "Permission requests"}</h2>
           <form action={permissionAction} className="portal-form operation-form">
-            <select name="request_type" defaultValue="one_hour"><option value="one_hour">One hour</option><option value="multiple_hours">Multiple hours</option><option value="custom">Custom</option><option value="until_shift_end">Until shift end</option></select>
+            <select name="request_type" defaultValue="one_hour"><option value="one_hour">{permissionTypeLabel("one_hour", ar)}</option><option value="multiple_hours">{permissionTypeLabel("multiple_hours", ar)}</option><option value="custom">{permissionTypeLabel("custom", ar)}</option><option value="until_shift_end">{permissionTypeLabel("until_shift_end", ar)}</option></select>
             <input name="starts_at" type="datetime-local" required />
-            <input name="ends_at" type="datetime-local" required />
+            <input name="ends_at" type="datetime-local" />
+            <small>{ar ? "اترك وقت النهاية فارغاً عند اختيار إلى نهاية الوردية." : "Leave end time empty when choosing until shift end."}</small>
             <input name="reason" required placeholder={ar ? "السبب" : "Reason"} />
             <button type="submit">{ar ? "إرسال الطلب" : "Submit request"}</button>
           </form>
-          <ul className="operation-list">{permissions.map((item) => <li key={item.id}><div><strong>{employeeName(employees, item.membership_id)}</strong><span>{item.request_type} · {item.status}</span><small>{item.reason}</small></div>{canManage && item.status === "pending" && <div className="button-row"><form action={reviewPermissionAction.bind(null, locale, item.id, "approved")}><button type="submit">{ar ? "قبول" : "Approve"}</button></form><form action={reviewPermissionAction.bind(null, locale, item.id, "rejected")}><button type="submit" className="danger-button">{ar ? "رفض" : "Reject"}</button></form></div>}</li>)}</ul>
+          <ul className="operation-list">{permissions.map((item) => <li key={item.id}><div><strong>{employeeName(employees, item.membership_id)}</strong><span>{permissionTypeLabel(item.request_type, ar)} · {statusLabel(item.status, ar)}</span><small>{item.reason}</small>{item.attachment_file_id && <a className="language-link" href={`/api/files/${item.attachment_file_id}`}>{ar ? "فتح المرفق" : "Open attachment"}</a>}</div>{canManage && item.status === "pending" && <div className="button-row"><form action={reviewPermissionAction.bind(null, locale, item.id, "approved")}><button type="submit">{ar ? "قبول" : "Approve"}</button></form><form action={reviewPermissionAction.bind(null, locale, item.id, "rejected")}><button type="submit" className="danger-button">{ar ? "رفض" : "Reject"}</button></form></div>}</li>)}</ul>
         </div>
         <div>
           <h2>{ar ? "الإجازات" : "Leave"}</h2>
@@ -401,7 +486,7 @@ export async function OperationsDashboard({
             <input name="reason" required placeholder={ar ? "السبب" : "Reason"} /><button type="submit">{ar ? "إرسال الطلب" : "Submit request"}</button>
           </form>
           {canManage && <details className="operation-form-card"><summary>{ar ? "إعداد أنواع وأرصدة الإجازة" : "Configure leave types and balances"}</summary><form action={leaveTypeAction} className="portal-form inline"><input name="code" required placeholder="ANNUAL" /><input name="name" required placeholder={ar ? "إجازة سنوية" : "Annual leave"} /><input name="default_days" type="number" min="0" max="365" required /><label className="checkbox-field"><input name="is_paid" type="checkbox" defaultChecked />{ar ? "مدفوعة" : "Paid"}</label><button type="submit">{ar ? "إضافة النوع" : "Add type"}</button></form><form action={balanceAction} className="portal-form inline"><select name="membership_id" required><option value="">{ar ? "الموظف" : "Employee"}</option>{employees.map((employee) => <option key={employee.membership_id} value={employee.membership_id}>{employee.display_name}</option>)}</select><select name="leave_type_id" required><option value="">{ar ? "النوع" : "Type"}</option>{leaveTypes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input name="year" type="number" defaultValue={new Date().getFullYear()} /><input name="allocated_days" type="number" min="0" max="365" required /><input name="reason" required placeholder={ar ? "سبب التعديل" : "Adjustment reason"} /><button type="submit">{ar ? "حفظ الرصيد" : "Save balance"}</button></form></details>}
-          <ul className="operation-list">{leaveRequests.map((item) => <li key={item.id}><div><strong>{employeeName(employees, item.membership_id)}</strong><span>{item.starts_on}–{item.ends_on} · {item.days}d · {item.status}</span><small>{item.reason}</small></div>{canManage && item.status === "pending" && <div className="button-row"><form action={reviewLeaveAction.bind(null, locale, item.id, "approved")}><button type="submit">{ar ? "قبول" : "Approve"}</button></form><form action={reviewLeaveAction.bind(null, locale, item.id, "rejected")}><button type="submit" className="danger-button">{ar ? "رفض" : "Reject"}</button></form></div>}</li>)}</ul>
+          <ul className="operation-list">{leaveRequests.map((item) => <li key={item.id}><div><strong>{employeeName(employees, item.membership_id)}</strong><span>{item.starts_on}–{item.ends_on} · {item.days} {ar ? "يوم" : "days"} · {statusLabel(item.status, ar)}</span><small>{item.reason}</small></div>{canManage && item.status === "pending" && <div className="button-row"><form action={reviewLeaveAction.bind(null, locale, item.id, "approved")}><button type="submit">{ar ? "قبول" : "Approve"}</button></form><form action={reviewLeaveAction.bind(null, locale, item.id, "rejected")}><button type="submit" className="danger-button">{ar ? "رفض" : "Reject"}</button></form></div>}</li>)}</ul>
         </div>
       </section>
 
@@ -410,22 +495,22 @@ export async function OperationsDashboard({
         <FileUploadForm locale={locale} />
         <form action={documentAction} className="portal-form operation-form">
           {canManage && <select name="membership_id"><option value="">{ar ? "الموظف الحالي" : "Current user"}</option>{employees.map((employee) => <option key={employee.membership_id} value={employee.membership_id}>{employee.display_name}</option>)}</select>}
-          <select name="document_type"><option value="residency">Residency</option><option value="passport">Passport</option><option value="medical_insurance">Medical insurance</option><option value="employment_contract">Employment contract</option><option value="driving_license">Driving license</option><option value="vehicle_insurance">Vehicle insurance</option><option value="custom">Custom</option></select>
+          <select name="document_type">{documentTypes.map((type) => <option key={type} value={type}>{documentTypeLabel(type, ar)}</option>)}</select>
           <input name="document_number" placeholder={ar ? "رقم الوثيقة" : "Document number"} /><input name="issued_on" type="date" /><input name="expires_on" type="date" /><input name="attachment_file_id" required placeholder={ar ? "معرف الملف المرفوع" : "Uploaded file ID"} /><input name="reminder_days" type="number" defaultValue="30" min="0" max="365" /><button type="submit">{ar ? "حفظ الوثيقة" : "Save document"}</button>
         </form>
         <ul className="operation-list">
           {documents.map((item) => (
             <li key={item.id}>
               <div>
-                <strong>{employeeName(employees, item.membership_id)} · {item.custom_type_name || item.document_type}</strong>
+                <strong>{employeeName(employees, item.membership_id)} · {item.custom_type_name || documentTypeLabel(item.document_type, ar)}</strong>
                 <span>{item.document_number || "—"} · {item.issued_on || "—"} → {item.expires_on || "—"}</span>
-                <span className="status-pill">{item.status} · {item.review_status}</span>
+                <span className="status-pill">{statusLabel(item.status, ar)} · {statusLabel(item.review_status, ar)}</span>
                 <a className="language-link" href={`/api/files/${item.attachment_file_id}`}>{ar ? "تنزيل الملف" : "Download file"}</a>
                 <details>
                   <summary>{ar ? "تفاصيل وتعديل الوثيقة" : "Document details and edit"}</summary>
                   <form action={updateDocumentAction.bind(null, locale, item.id)} className="portal-form operation-form">
                     <input type="hidden" name="version" value={item.version} />
-                    <select name="document_type" defaultValue={item.document_type}><option value="residency">Residency</option><option value="passport">Passport</option><option value="medical_insurance">Medical insurance</option><option value="employment_contract">Employment contract</option><option value="driving_license">Driving license</option><option value="vehicle_insurance">Vehicle insurance</option><option value="custom">Custom</option></select>
+                    <select name="document_type" defaultValue={item.document_type}>{documentTypes.map((type) => <option key={type} value={type}>{documentTypeLabel(type, ar)}</option>)}</select>
                     <input name="custom_type_name" defaultValue={item.custom_type_name ?? ""} placeholder={ar ? "اسم النوع المخصص" : "Custom type name"} />
                     <input name="document_number" defaultValue={item.document_number ?? ""} placeholder={ar ? "رقم الوثيقة" : "Document number"} />
                     <input name="issued_on" type="date" defaultValue={item.issued_on ?? ""} />
@@ -445,7 +530,73 @@ export async function OperationsDashboard({
         </ul>
       </section>
 
-      {canManage && <section className="portal-section split-sections"><div><h2>{ar ? "التقارير والتصدير" : "Reports and exports"}</h2><form action={exportAction} className="portal-form operation-form"><select name="report_type"><option value="attendance">Attendance</option><option value="geofence_exits">Unauthorized exits</option><option value="leave">Leave</option><option value="permissions">Permissions</option><option value="tasks">Tasks</option><option value="documents">Documents</option><option value="branches">Branches</option><option value="shifts">Shifts</option></select><select name="export_format"><option value="pdf">PDF</option><option value="xlsx">Excel/XLSX</option></select><input name="date_from" type="date" /><input name="date_to" type="date" /><button type="submit">{ar ? "إنشاء التصدير" : "Create export"}</button></form><ul className="operation-list">{exports.map((job) => <li key={job.id}><div><strong>{job.report_type} · {job.export_format.toUpperCase()}</strong><span>{job.status} · {job.progress_percent}%</span></div>{job.status === "completed" && <a className="language-link" href={`/api/exports/${job.id}`}>{ar ? "تنزيل" : "Download"}</a>}</li>)}</ul></div><div><h2>{ar ? "الاشتراك" : "Subscription"}</h2>{subscription ? <article className="subscription-card"><span className="status-pill">{subscription.status}</span><h3>{subscription.plan.name}</h3><p>{subscription.plan.code} · {subscription.billing_cycle}</p><p>{ar ? "ينتهي" : "Ends"}: {formatDate(subscription.ends_at, locale)}</p><pre>{JSON.stringify(subscription.plan.limits, null, 2)}</pre></article> : <p className="empty-state">{ar ? "لا يوجد اشتراك فعال." : "No active subscription."}</p>}</div></section>}
+      {canManage && (
+        <section className="portal-section split-sections">
+          <div>
+            <h2>{ar ? "التقارير والتصدير" : "Reports and exports"}</h2>
+            <form action={exportAction} className="portal-form operation-form">
+              <select name="report_type" defaultValue="attendance">
+                {reportExportTypes.map((type) => (
+                  <option key={type} value={type}>{reportTypeLabel(type, ar)}</option>
+                ))}
+              </select>
+              <select name="report_types" multiple size={3} aria-label={ar ? "أنواع إضافية في الملف نفسه" : "Additional report types in the same file"}>
+                {reportExportTypes.map((type) => (
+                  <option key={type} value={type}>{ar ? `إضافة: ${reportTypeLabel(type, true)}` : `Also include: ${reportTypeLabel(type, false)}`}</option>
+                ))}
+              </select>
+              <select name="membership_id" defaultValue="" aria-label={ar ? "الموظف" : "Employee"}>
+                <option value="">{ar ? "كل الموظفين" : "All employees"}</option>
+                {employees.map((employee) => (
+                  <option key={employee.membership_id} value={employee.membership_id}>{employee.display_name}</option>
+                ))}
+              </select>
+              <select name="export_format" defaultValue="pdf">
+                <option value="pdf">PDF</option>
+                <option value="xlsx">Excel/XLSX</option>
+              </select>
+              <input name="date_from" type="date" aria-label={ar ? "من تاريخ" : "From date"} />
+              <input name="date_to" type="date" aria-label={ar ? "إلى تاريخ" : "To date"} />
+              <button type="submit">{ar ? "إنشاء التصدير" : "Create export"}</button>
+            </form>
+            <ul className="operation-list">
+              {exports.map((job) => (
+                <li key={job.id}>
+                  <div>
+                    <strong>{reportTypeLabel(job.report_type, ar)} · {job.export_format === "xlsx" ? "Excel" : "PDF"}</strong>
+                    <span>{statusLabel(job.status, ar)} · {job.progress_percent}%</span>
+                    <small>{ar ? "تاريخ إنشاء الملف" : "File generated"}: {exportDate(job.created_at, locale)} · {exportPeriod(job, ar)}</small>
+                  </div>
+                  {job.status === "completed" && (
+                    <a className="language-link" href={`/${locale}/exports/${job.id}`}>{ar ? "تنزيل" : "Download"}</a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h2>{ar ? "الاشتراك" : "Subscription"}</h2>
+            {subscription ? (
+              <article className="subscription-card">
+                <span className="status-pill">{statusLabel(subscription.status, ar)}</span>
+                <h3>{subscription.plan.name}</h3>
+                <p>{subscription.plan.code} · {billingCycleLabel(subscription.billing_cycle, ar)}</p>
+                <p>{ar ? "ينتهي" : "Ends"}: {formatDate(subscription.ends_at, locale)}</p>
+                <dl className="subscription-limits">
+                  {Object.entries({ ...subscription.plan.limits, ...(subscription.limits_override ?? {}) }).map(([key, value]) => (
+                    <div key={key}>
+                      <dt>{subscriptionLimitLabel(key, ar)}</dt>
+                      <dd>{formatLimitValue(key, value, ar)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </article>
+            ) : (
+              <p className="empty-state">{ar ? "لا يوجد اشتراك فعال." : "No active subscription."}</p>
+            )}
+          </div>
+        </section>
+      )}
       {canManage && (
         <section className="portal-section" aria-labelledby="report-center-title">
           <div className="section-heading">
@@ -466,8 +617,8 @@ export async function OperationsDashboard({
             {reportSections.map(({ key, label, report }) => (
               <details className="metric-card" key={key}>
                 <summary><span>{label}</span><strong>{report.total}</strong></summary>
-                <small>{Object.entries(report.status_counts).map(([itemStatus, count]) => `${itemStatus}: ${count}`).join(" · ") || (ar ? "لا توجد نتائج" : "No results")}</small>
-                <ul className="operation-list">{report.items.slice(0, 10).map((item) => <li key={String(item.id)}><span>{String(item.title ?? item.document_type ?? item.request_type ?? item.starts_on ?? item.id)}</span><small>{String(item.status ?? "")}</small></li>)}</ul>
+                <small>{Object.entries(report.status_counts).map(([itemStatus, count]) => `${statusLabel(itemStatus, ar)}: ${count}`).join(" · ") || (ar ? "لا توجد نتائج" : "No results")}</small>
+                <ul className="operation-list">{report.items.slice(0, 10).map((item) => <li key={String(item.id)}><span>{String(item.title ?? item.document_type ?? item.request_type ?? item.starts_on ?? item.id)}</span><small>{statusLabel(String(item.status ?? ""), ar)}</small></li>)}</ul>
               </details>
             ))}
           </div>

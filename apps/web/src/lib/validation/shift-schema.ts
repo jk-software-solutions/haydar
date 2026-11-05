@@ -5,8 +5,18 @@ export const shiftSchema = z.object({
   name: z.string().trim().min(2).max(160),
   start_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
   end_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  second_start_time: z.preprocess(
+    (value) => (value === "" || value === undefined ? null : value),
+    z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable(),
+  ),
+  second_end_time: z.preprocess(
+    (value) => (value === "" || value === undefined ? null : value),
+    z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable(),
+  ),
+  location_policy: z.enum(["branch_required", "location_not_required"]).default("branch_required"),
   working_days: z.array(z.coerce.number().int().min(0).max(6)).min(1).max(7).refine((days) => new Set(days).size === days.length),
   grace_period_minutes: z.coerce.number().int().min(0).max(240),
+  checkout_grace_period_minutes: z.coerce.number().int().min(0).max(240),
   break_duration_minutes: z.coerce.number().int().min(0).max(720),
   effective_from: z.iso.date(),
   effective_to: z.preprocess(
@@ -16,6 +26,9 @@ export const shiftSchema = z.object({
 }).refine(
   (value) => value.effective_to === null || value.effective_to >= value.effective_from,
   { path: ["effective_to"], message: "End date must not precede start date" },
+).refine(
+  (value) => (value.second_start_time === null) === (value.second_end_time === null),
+  { path: ["second_start_time"], message: "Second period start and end are required together" },
 );
 
 export const shiftAssignmentSchema = z.object({

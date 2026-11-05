@@ -120,8 +120,9 @@ updates append immutable audit events.
 
 - `/branches` supports tenant-scoped create, paginated list, detail, versioned
   update, and soft archive. Branch payloads include code, Saudi short/full
-  address, coordinates, geofence radius, timezone, working hours, and optional
-  same-tenant owner/manager-role manager membership.
+  address, coordinates, geofence radius, timezone, working hours, optional
+  authorized Wi‑Fi networks (`SSID` plus `BSSID`), and optional same-tenant
+  owner/manager-role manager membership.
 - `GET /branches/management/supervisors` lists visible branch supervisor mappings.
   `PUT /branches/{branch_id}/supervisors` atomically replaces the branch's active
   supervisor-role members using the branch version and writes an audit event.
@@ -190,8 +191,12 @@ All routes below are under `/api/v1`, require a tenant bearer session unless not
 client-supplied tenant ownership, and return RFC 9457-style problem responses.
 
 - Attendance: `POST /attendance/check-in`, `POST /attendance/check-out`, `GET /attendance/me`,
-  `GET /attendance`, `POST /attendance/manual`, `PATCH /attendance/{id}`,
+  `GET /attendance`, `GET /attendance/records/{id}/location-events`,
+  `POST /attendance/manual`, `PATCH /attendance/{id}`,
   `POST /attendance/qr-tokens`, and `POST /attendance/reconcile`.
+  Check-in/out methods are `gps`, `qr`, or `wifi`. Wi‑Fi actions include the
+  current network SSID and BSSID configured for the employee's branch and do
+  not require geofence coordinates.
 - Permission requests: `POST/GET /permission-requests` and
   `POST /permission-requests/{id}/review`.
 - Presence: `POST/GET /presence-requests` and `POST /presence-requests/{id}/respond`.

@@ -11,7 +11,7 @@ export default async function RegisterPage({ params }: { params: Promise<{ lang:
   return (
     <main className="portal-shell">
       <section className="portal-card">
-        <p className="foundation-eyebrow">HADIR | حاضر</p>
+        <p className="foundation-eyebrow">DawamTech | دوام تك</p>
         <h1>{ar ? "إنشاء شركة" : "Create your company"}</h1>
         <p>{ar ? "ابدأ بفترة تجريبية حقيقية ثم أضف فريقك وفروعك." : "Start a real trial, then add your team and branches."}</p>
         <RegistrationForm locale={lang} />

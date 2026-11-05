@@ -71,10 +71,28 @@ async def test_invitation_activation_and_tenant_isolation(
     assert cross_tenant_read.status_code == 404
     assert cross_tenant_read.json()["code"] == "invitation_not_found"
 
-    activation = await db_client.post(
+    resend_response = await db_client.post(
+        f"/api/v1/invitations/{invitation['id']}/resend-code",
+        headers=auth_headers(company_a),
+    )
+    assert resend_response.status_code == 200
+    resent_invitation = resend_response.json()
+    assert resent_invitation["activation_token"]
+    assert resent_invitation["activation_token"] != invitation["activation_token"]
+
+    old_activation = await db_client.post(
         "/api/v1/auth/invitations/activate",
         json={
             "activation_token": invitation["activation_token"],
+            "password": "EmployeePass123!",
+        },
+    )
+    assert old_activation.status_code == 400
+
+    activation = await db_client.post(
+        "/api/v1/auth/invitations/activate",
+        json={
+            "activation_token": resent_invitation["activation_token"],
             "password": "EmployeePass123!",
         },
     )
@@ -98,7 +116,7 @@ async def test_invitation_activation_and_tenant_isolation(
     reused_activation = await db_client.post(
         "/api/v1/auth/invitations/activate",
         json={
-            "activation_token": invitation["activation_token"],
+            "activation_token": resent_invitation["activation_token"],
             "password": "EmployeePass123!",
         },
     )

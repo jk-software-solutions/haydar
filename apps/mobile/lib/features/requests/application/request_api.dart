@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/file_upload.dart';
 import '../../auth/application/auth_api.dart';
 
 final requestApiProvider = Provider<RequestApi>(
@@ -93,7 +94,7 @@ class RequestApi {
     AuthSession session, {
     required String type,
     required DateTime startsAt,
-    required DateTime endsAt,
+    DateTime? endsAt,
     required String reason,
   }) async {
     await dio.post<void>(
@@ -102,7 +103,7 @@ class RequestApi {
       data: <String, dynamic>{
         'request_type': type,
         'starts_at': startsAt.toUtc().toIso8601String(),
-        'ends_at': endsAt.toUtc().toIso8601String(),
+        if (endsAt != null) 'ends_at': endsAt.toUtc().toIso8601String(),
         'reason': reason,
       },
     );
@@ -134,7 +135,11 @@ class RequestApi {
     required List<int> bytes,
   }) async {
     final form = FormData.fromMap(<String, dynamic>{
-      'upload': MultipartFile.fromBytes(bytes, filename: filename),
+      'upload': MultipartFile.fromBytes(
+        bytes,
+        filename: filename,
+        contentType: uploadMediaType(filename),
+      ),
     });
     final response = await dio.post<Map<String, dynamic>>(
       '/files',
@@ -169,6 +174,8 @@ class RequestItem {
   const RequestItem({
     required this.id,
     required this.kind,
+    required this.employeeName,
+    required this.employeeEmail,
     required this.type,
     required this.status,
     required this.reason,
@@ -181,6 +188,8 @@ class RequestItem {
   }) => RequestItem(
     id: json['id'] as String? ?? '',
     kind: kind,
+    employeeName: json['employee_name'] as String? ?? '',
+    employeeEmail: json['employee_email'] as String? ?? '',
     type:
         json['request_type'] as String? ??
         (json['leave_type_id'] as String? ?? 'leave'),
@@ -191,6 +200,8 @@ class RequestItem {
   );
   final String id;
   final String kind;
+  final String employeeName;
+  final String employeeEmail;
   final String type;
   final String status;
   final String reason;

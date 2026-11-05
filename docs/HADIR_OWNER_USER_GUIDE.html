@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>دليل مالك نظام دوام تك DawamTech</title>
+  <style>
+    :root {
+      --bg: #f5fbf9;
+      --paper: #ffffff;
+      --ink: #102b25;
+      --muted: #587069;
+      --line: #d9e9e5;
+      --brand: #007a68;
+      --brand-dark: #00594c;
+      --soft: #e8f5f2;
+      --warn: #fff7e0;
+      --danger: #fff0f0;
+      --shadow: 0 22px 60px rgba(0, 80, 68, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(0, 122, 104, 0.16), transparent 34rem),
+        linear-gradient(180deg, #f8fffd 0%, var(--bg) 100%);
+      color: var(--ink);
+      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+      line-height: 1.85;
+    }
+
+    a {
+      color: var(--brand-dark);
+      font-weight: 800;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .page {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 64px;
+    }
+
+    .hero {
+      display: grid;
+      gap: 18px;
+      padding: 34px;
+      border: 1px solid var(--line);
+      border-radius: 30px;
+      background: linear-gradient(135deg, #ffffff 0%, #effaf7 100%);
+      box-shadow: var(--shadow);
+    }
+
+    .eyebrow {
+      margin: 0;
+      color: var(--brand);
+      font-size: 0.9rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      color: var(--ink);
+      line-height: 1.35;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 5vw, 4rem);
+    }
+
+    h2 {
+      font-size: clamp(1.45rem, 3vw, 2.2rem);
+      padding-block-start: 10px;
+    }
+
+    h3 {
+      font-size: 1.15rem;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    .lead {
+      max-width: 72ch;
+      color: var(--muted);
+      font-size: 1.12rem;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--brand-dark);
+      font-weight: 800;
+      font-size: 0.92rem;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      gap: 22px;
+      margin-block-start: 24px;
+      align-items: start;
+    }
+
+    .toc {
+      position: sticky;
+      top: 16px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: 0 14px 40px rgba(0, 70, 58, 0.08);
+      backdrop-filter: blur(10px);
+    }
+
+    .toc strong {
+      display: block;
+      margin-block-end: 10px;
+    }
+
+    .toc ol {
+      display: grid;
+      gap: 7px;
+      margin: 0;
+      padding-inline-start: 20px;
+    }
+
+    .content {
+      display: grid;
+      gap: 18px;
+    }
+
+    section,
+    .card {
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: var(--paper);
+      box-shadow: 0 12px 34px rgba(0, 70, 58, 0.06);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+      margin-block-start: 14px;
+    }
+
+    .mini {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #fbfffe;
+    }
+
+    .steps {
+      counter-reset: step;
+      display: grid;
+      gap: 10px;
+      margin: 16px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .steps li {
+      counter-increment: step;
+      position: relative;
+      padding: 14px 54px 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fbfffe;
+    }
+
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      inset-inline-start: auto;
+      inset-inline-end: 14px;
+      top: 14px;
+      display: grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--brand);
+      color: #fff;
+      font-weight: 900;
+    }
+
+    ul {
+      margin: 12px 0 0;
+      padding-inline-start: 24px;
+    }
+
+    li + li {
+      margin-block-start: 6px;
+    }
+
+    .note,
+    .warning,
+    .danger {
+      margin-block-start: 14px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+    }
+
+    .note {
+      background: var(--soft);
+    }
+
+    .warning {
+      background: var(--warn);
+      border-color: #efd480;
+    }
+
+    .danger {
+      background: var(--danger);
+      border-color: #e8b1b1;
+    }
+
+    code,
+    .code {
+      direction: ltr;
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 8px;
+      background: #eef7f4;
+      color: #003f36;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.94em;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin-block-start: 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+    }
+
+    table {
+      width: 100%;
+      min-width: 720px;
+      border-collapse: collapse;
+      background: #fff;
+    }
+
+    th,
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: start;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eef7f4;
+      color: var(--brand-dark);
+      font-weight: 900;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .checklist {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 10px;
+      margin-block-start: 14px;
+    }
+
+    .checklist label {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fbfffe;
+    }
+
+    .footer {
+      margin-block-start: 18px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @media (max-width: 880px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .toc {
+        position: static;
+      }
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .page {
+        width: 100%;
+        padding: 0;
+      }
+
+      .hero,
+      section,
+      .card,
+      .toc {
+        box-shadow: none;
+        break-inside: avoid;
+      }
+
+      .toc {
+        position: static;
+      }
+
+      a {
+        color: #000;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <p class="eyebrow">DawamTech | دوام تك</p>
+      <h1>دليل مستخدم المالك</h1>
+      <p class="lead">
+        هذا الدليل يشرح للمالك كيف يستخدم نظام حاضر لإدارة الشركة: الموظفين، الفروع، الورديات، الحضور، الدعوات، الأجهزة، الصلاحيات، الطلبات، التقارير، والإعدادات. اتبع الترتيب المقترح في البداية حتى يعمل حضور الموظفين بدون أخطاء.
+      </p>
+      <div class="meta">
+        <span class="pill">نسخة الدليل: 14 سبتمبر 2026</span>
+        <span class="pill">الدور المقصود: OWNER / مالك الشركة</span>
+        <span class="pill">اللغة: عربي RTL</span>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="toc" aria-label="فهرس الدليل">
+        <strong>الفهرس السريع</strong>
+        <ol>
+          <li><a href="#links">روابط الدخول</a></li>
+          <li><a href="#handoff-data">بيانات الفحص والتسليم</a></li>
+          <li><a href="#setup">الترتيب الصحيح لأول إعداد</a></li>
+          <li><a href="#subscriptions">تفعيل الاشتراكات والباقات</a></li>
+          <li><a href="#web-tabs">شرح تبويبات الموقع</a></li>
+          <li><a href="#mobile">شرح التطبيق</a></li>
+          <li><a href="#employees">إدارة الموظفين</a></li>
+          <li><a href="#branches">الفروع والخريطة</a></li>
+          <li><a href="#shifts">الورديات</a></li>
+          <li><a href="#attendance">الحضور والانصراف</a></li>
+          <li><a href="#requests">الطلبات والإجازات</a></li>
+          <li><a href="#reports">التقارير</a></li>
+          <li><a href="#security">الأمان والصلاحيات</a></li>
+          <li><a href="#troubleshooting">حل المشاكل الشائعة</a></li>
+        </ol>
+      </aside>
+
+      <div class="content">
+        <section id="links">
+          <h2>1) روابط الدخول والاستخدام</h2>
+          <div class="grid">
+            <article class="mini">
+              <h3>رابط الموقع الإداري</h3>
+              <p><a href="https://2-28-31-153.sslip.io/ar">https://2-28-31-153.sslip.io/ar</a></p>
+              <p>استخدمه من الكمبيوتر أو من متصفح الجوال لإدارة الشركة بالكامل.</p>
+            </article>
+            <article class="mini">
+              <h3>رابط تحميل التطبيق APK</h3>
+              <p><a href="https://2-28-31-153.sslip.io/HADIR-owner.apk">https://2-28-31-153.sslip.io/HADIR-owner.apk</a></p>
+              <p>يُفتح من هاتف أندرويد لتحميل التطبيق وتثبيته.</p>
+            </article>
+            <article class="mini">
+              <h3>تسجيل الدخول</h3>
+              <p>ادخل بالبريد الإلكتروني أو رقم الجوال الدولي الموثّق مثل <span class="code">+966500000000</span> مع كلمة المرور.</p>
+            </article>
+          </div>
+          <div class="warning">
+            لا ترسل كلمة مرور المالك لأي شخص. إذا احتاج موظف الدخول، أنشئ له دعوة خاصة به أو فعّل رقم جواله من ملف الموظف.
+          </div>
+          <div class="note">
+            إذا ظهرت في شاشة قديمة عبارة «الاتصال المحلي وقاعدة البيانات»، فهي عبارة تقنية من إصدار سابق. التطبيق المنشور يتصل بخادم الشركة عبر HTTPS، والبيانات التشغيلية محفوظة على الخادم وليست قاعدة هاتف محلية. بعد تثبيت أحدث APK ستظهر العبارة للمستخدم بصياغة واضحة: «الخادم وقاعدة البيانات جاهزان».
+          </div>
+        </section>
+
+        <section id="handoff-data">
+          <h2>2) بيانات الفحص والتسليم</h2>
+          <p>
+            هذا القسم يساعد المالك أو الفاحص على معرفة بيانات البيئة الحالية: الشركة، الاشتراك، الحسابات الموجودة، والدعوات. لا يحتوي هذا القسم على كلمات مرور أو مفاتيح سرية.
+          </p>
+
+          <div class="grid">
+            <article class="mini">
+              <h3>بيانات الشركة</h3>
+              <ul>
+                <li>اسم الشركة: <strong>Hadir Operations</strong></li>
+                <li>الاسم التقني: <span class="code">hadir-operations</span></li>
+                <li>حالة الشركة: <span class="code">active</span></li>
+                <li>اللغة الافتراضية: <span class="code">ar</span></li>
+                <li>المنطقة الزمنية: <span class="code">Asia/Riyadh</span></li>
+              </ul>
+            </article>
+
+            <article class="mini">
+              <h3>بيانات الاشتراك</h3>
+              <ul>
+                <li>الخطة: <strong>Enterprise</strong></li>
+                <li>كود الخطة: <span class="code">ENTERPRISE</span></li>
+                <li>حالة الاشتراك: <span class="code">active</span></li>
+                <li>ينتهي في: <span class="code">2036-08-16</span></li>
+                <li>حد الموظفين: <span class="code">1,000,000</span></li>
+                <li>حد الفروع: <span class="code">1,000,000</span></li>
+                <li>التقارير: <span class="code">advanced</span></li>
+                <li>GPS و QR والمهام والوثائق: مفعلة.</li>
+              </ul>
+            </article>
+
+            <article class="mini">
+              <h3>حساب المالك</h3>
+              <ul>
+                <li>البريد: <span class="code">owner@hadir-app.local</span></li>
+                <li>الاسم: <strong>Hadir Owner</strong></li>
+                <li>الدور: <span class="code">OWNER</span></li>
+                <li>الحالة: <span class="code">active</span></li>
+                <li>صلاحيات المالك: كاملة.</li>
+              </ul>
+            </article>
+          </div>
+
+
+        </section>
+
+        <section id="setup">
+          <h2>3) الترتيب الصحيح لأول إعداد</h2>
+          <p>أفضل ترتيب لتجهيز الشركة هو التالي:</p>
+          <ol class="steps">
+            <li><strong>ادخل بحساب المالك.</strong> تأكد أن الدور يظهر OWNER أو مالك الشركة.</li>
+            <li><strong>اضبط إعدادات الشركة.</strong> راجع اسم الشركة، المنطقة الزمنية، وسياسة البصمة.</li>
+            <li><strong>أنشئ الفروع.</strong> كل فرع يحتاج اسم، كود، عنوان، موقع على الخريطة، ونطاق حضور بالمتر.</li>
+            <li><strong>أنشئ الورديات.</strong> حدد وقت البداية والنهاية، أيام العمل، وهل الوردية تحتاج موقع أو لا.</li>
+            <li><strong>ادعُ الموظفين.</strong> أرسل لكل موظف كود دعوة خاص به.</li>
+            <li><strong>عيّن الموظف إلى فرع.</strong> بدون تعيين فرع قد تظهر له رسالة أن الموظف أو الفرع غير مربوط بدوام نشط.</li>
+            <li><strong>عيّن الموظف أو الفرع إلى وردية.</strong> الحضور يحتاج وردية فعالة حسب تاريخ اليوم.</li>
+            <li><strong>اختبر تسجيل الحضور.</strong> جرّب موظف واحد أولاً قبل تعميم التطبيق على الجميع.</li>
+          </ol>
+          <div class="note">
+            القاعدة الذهبية: <strong>موظف + فرع فعال + وردية فعالة = حضور يعمل.</strong>
+          </div>
+        </section>
+
+        <section id="subscriptions">
+          <h2>4) تفعيل الاشتراكات والباقات</h2>
+          <p>تفعيل الاشتراك يتم من حساب <strong>مسؤول المنصة ADMIN</strong>، وليس من حساب مالك الشركة العادي. بهذه الطريقة يمكن إعطاء كل عميل العدد الذي يحتاجه بدون إنشاء حساب جديد.</p>
+          <ol class="steps">
+            <li>سجّل الدخول بحساب مسؤول المنصة وافتح صفحة <strong>الشركات والاشتراكات</strong>.</li>
+            <li>اختر الشركة المطلوبة، ثم اختر الباقة: تجربة، شهرية، أو سنوية، وحدد مدة الاشتراك بالأيام.</li>
+            <li>إذا كان للعميل عدد خاص، اكتب <strong>عدد الموظفين</strong> و<strong>عدد الفروع</strong> و<strong>التخزين بالميجابايت</strong>. اترك الحقل فارغاً لاستخدام حد الباقة.</li>
+            <li>اكتب سبب التفعيل ثم اضغط <strong>تفعيل / حفظ الاشتراك</strong>. تظهر الحالة والحدود للمالك في لوحة الشركة.</li>
+          </ol>
+          <div class="grid">
+            <article class="mini"><h3>مثال: فرع واحد و20 موظفاً</h3><p>اختر الباقة المناسبة، ثم اكتب الموظفين: <strong>20</strong> والفروع: <strong>1</strong>.</p></article>
+            <article class="mini"><h3>مثال: 3 فروع و4 موظفين</h3><p>اكتب الموظفين: <strong>4</strong> والفروع: <strong>3</strong>. لا علاقة لعدد الموظفين بعدد الفروع؛ كل حد مستقل.</p></article>
+          </div>
+          <div class="note">المالك يرى الاشتراك وحدوده بصياغة واضحة. لا يحتاج إلى إدخال JSON أو رموز تقنية.</div>
+        </section>
+
+        <section id="web-tabs">
+          <h2>5) شرح تبويبات الموقع الإداري</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>التبويب</th>
+                  <th>ماذا يفعل؟</th>
+                  <th>أهم استخدام للمالك</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>الموظفون</td>
+                  <td>عرض ملفات الموظفين، تعديل بياناتهم، تعطيلهم، وإدارة صلاحياتهم ونطاق عملهم.</td>
+                  <td>تعديل الجوال، الدور، حالة العضوية، والصلاحيات.</td>
+                </tr>
+                <tr>
+                  <td>الفروع</td>
+                  <td>إنشاء الفروع، تحديد الموقع بالخريطة، تعيين الموظفين للفروع، تعديل مدير ومشرفي الفرع.</td>
+                  <td>إعداد مواقع الحضور الجغرافية.</td>
+                </tr>
+                <tr>
+                  <td>الورديات</td>
+                  <td>إنشاء جداول العمل، وردية واحدة أو دوامين في اليوم، وتعيين الورديات للموظفين أو الفروع.</td>
+                  <td>ربط الموظفين بوقت العمل الصحيح.</td>
+                </tr>
+                <tr>
+                  <td>المجموعات</td>
+                  <td>إنشاء فرق تشغيلية وربط أعضاء بها.</td>
+                  <td>تقسيم العمل والتقارير حسب مجموعات.</td>
+                </tr>
+                <tr>
+                  <td>العمليات</td>
+                  <td>الحضور، QR، الحضور اليدوي، المهام، الإجازات، الوثائق، التقارير.</td>
+                  <td>متابعة التشغيل اليومي.</td>
+                </tr>
+                <tr>
+                  <td>الإشعارات</td>
+                  <td>عرض التنبيهات وتعديل تفضيلات الإشعارات.</td>
+                  <td>متابعة الأحداث المهمة.</td>
+                </tr>
+                <tr>
+                  <td>النطاق</td>
+                  <td>مراجعة أحداث الخروج من نطاق الفرع.</td>
+                  <td>اعتماد أو رفض الحالات المخالفة.</td>
+                </tr>
+                <tr>
+                  <td>الإدارة</td>
+                  <td>دعوات الموظفين وإعدادات الشركة.</td>
+                  <td>إرسال دعوات، إعادة إنشاء كود الدعوة، وضبط الشركة.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="mobile">
+          <h2>6) شرح التطبيق للمالك والمدير</h2>
+          <p>عند دخول المالك إلى تطبيق أندرويد تظهر له واجهة إدارة تحتوي على:</p>
+          <div class="grid">
+            <article class="mini">
+              <h3>الرئيسية</h3>
+              <p>معلومات الجلسة والشركة والدور الحالي.</p>
+            </article>
+            <article class="mini">
+              <h3>الفريق</h3>
+              <p>عرض أعضاء الفريق وحالة حضورهم وإمكانية الوصول حسب الصلاحيات.</p>
+            </article>
+            <article class="mini">
+              <h3>الحضور</h3>
+              <p>عرض سجلات الحضور أو استخدام نمط المدير لمتابعة حضور الموظفين.</p>
+            </article>
+            <article class="mini">
+              <h3>المهام</h3>
+              <p>متابعة المهام وإدارتها حسب صلاحية الدور.</p>
+            </article>
+            <article class="mini">
+              <h3>المزيد</h3>
+              <p>يفتح: كل تحكمات الموقع داخل التطبيق، الدعوات، الأجهزة، الفروع والورديات، الأدوار والصلاحيات، المجموعات، والموافقات.</p>
+            </article>
+            <article class="mini">
+              <h3>الملف الشخصي والصورة</h3>
+              <p>من الملف الشخصي يرفع الموظف صورته من الاستديو، ويظهر الفرع والوردية المعينان له. يستطيع المالك أيضاً رفع الصورة من بطاقة الموظف في الموقع.</p>
+            </article>
+          </div>
+          <div class="note">
+            زر <strong>كل تحكمات الموقع</strong> داخل التطبيق يفتح بوابة الموقع كاملة، لذلك يستطيع المالك استخدام أغلب أدوات الإدارة من الهاتف أيضاً.
+          </div>
+        </section>
+
+        <section id="employees">
+          <h2>7) إدارة الموظفين والدعوات</h2>
+          <h3>إنشاء دعوة موظف جديد</h3>
+          <ol class="steps">
+            <li>افتح الموقع ثم ادخل إلى تبويب <strong>الإدارة</strong>.</li>
+            <li>في قسم <strong>دعوات الموظفين</strong> اكتب الاسم الكامل والبريد الإلكتروني.</li>
+            <li>اختر الدور المناسب: موظف، مشرف، موارد بشرية، أو مدير.</li>
+            <li>اضغط <strong>إنشاء دعوة</strong>.</li>
+            <li>انسخ كود التفعيل وأرسله للموظف.</li>
+          </ol>
+
+          <h3>إعادة إرسال أو نسخ كود الدعوة لاحقاً</h3>
+          <ol class="steps">
+            <li>افتح تبويب <strong>الإدارة</strong>.</li>
+            <li>ابحث عن الدعوة المطلوبة في قائمة الدعوات.</li>
+            <li>إذا كانت الدعوة <span class="code">pending</span> اضغط <strong>إعادة إنشاء/نسخ الكود</strong>.</li>
+            <li>انسخ الكود الجديد وأرسله للموظف.</li>
+          </ol>
+          <div class="warning">
+            النظام لا يعرض الكود القديم لأن الكود يُحفظ مشفراً كهاش. عند إعادة إنشاء كود جديد يصبح الكود القديم غير صالح، وهذا أفضل أمنياً.
+          </div>
+
+          <h3>تفعيل الموظف للدعوة</h3>
+          <ol class="steps">
+            <li>الموظف يفتح التطبيق.</li>
+            <li>يختار تفعيل دعوة أو Activate invitation.</li>
+            <li>يلصق كود الدعوة.</li>
+            <li>ينشئ كلمة مرور خاصة به.</li>
+            <li>بعد التفعيل يدخل بحسابه الجديد.</li>
+          </ol>
+
+          <h3>تعديل بيانات الموظف</h3>
+          <ol class="steps">
+            <li>افتح تبويب <strong>الموظفون</strong>.</li>
+            <li>اختر بطاقة الموظف.</li>
+            <li>عدّل الاسم، المسمى الوظيفي، الجوال، أو حالة العضوية حسب الحاجة.</li>
+            <li>احفظ التعديل.</li>
+          </ol>
+
+          <h3>صورة الملف الشخصي</h3>
+          <p>يفتح الموظف تبويب <strong>الملف الشخصي</strong> في التطبيق، يضغط <strong>إضافة صورة الموظف</strong> ويختار صورة من الاستديو. تُحفظ الصورة في خادم الشركة وتظهر للمالك في بطاقة الموظف، ويمكن إزالة الصورة لاحقاً.</p>
+
+          <h3>حذف أو تعطيل موظف</h3>
+          <p>الحذف في النظام يعني غالباً تعطيل العضوية لحفظ السجلات التاريخية.</p>
+          <ol class="steps">
+            <li>افتح تبويب <strong>الموظفون</strong>.</li>
+            <li>استخدم زر حذف/تعطيل للموظف أو اختر أكثر من موظف من الحذف الجماعي.</li>
+            <li>بعد التعطيل يتم سحب الجلسات والأجهزة ولا يستطيع الموظف استخدام الحضور.</li>
+          </ol>
+        </section>
+
+        <section id="branches">
+          <h2>8) الفروع والخريطة</h2>
+          <h3>إنشاء فرع جديد</h3>
+          <ol class="steps">
+            <li>افتح تبويب <strong>الفروع</strong>.</li>
+            <li>اكتب اسم الفرع والكود والعنوان.</li>
+            <li>استخدم البحث في الخريطة باسم المكان أو الرمز/العنوان الوطني السعودي إن توفر.</li>
+            <li>حرّك الخريطة أو اضغط على الموقع الصحيح؛ النظام يلتقط الإحداثيات تلقائياً.</li>
+            <li>حدد نطاق الحضور بالمتر، مثال: 50 أو 100 متر.</li>
+            <li>اختر المنطقة الزمنية، غالباً <span class="code">Asia/Riyadh</span>.</li>
+            <li>اضغط <strong>إضافة فرع</strong>.</li>
+          </ol>
+
+          <h3>تعيين موظف أو أكثر إلى فرع</h3>
+          <ol class="steps">
+            <li>من تبويب <strong>الفروع</strong> افتح قسم <strong>تعيين موظف إلى فرع</strong>.</li>
+            <li>اختر موظفاً واحداً أو عدة موظفين.</li>
+            <li>اختر الفرع.</li>
+            <li>حدد تاريخ بداية التعيين.</li>
+            <li>اكتب السبب مثل: تعيين تشغيلي أو نقل فرع.</li>
+            <li>احفظ التعيين.</li>
+          </ol>
+
+          <h3>تعديل مدير ومشرفي الفرع</h3>
+          <ol class="steps">
+            <li>افتح الفرع من القائمة.</li>
+            <li>اختر مدير الفرع من أصحاب دور مالك/مدير.</li>
+            <li>اختر مشرفاً أو أكثر من أصحاب دور مشرف.</li>
+            <li>احفظ التعديل.</li>
+          </ol>
+
+          <div class="note">
+            إذا ظهر للموظف في التطبيق أن الفرع غير مرتبط أو لا توجد وردية، تأكد من وجود تعيين فرع وتعيين وردية فعالين في تاريخ اليوم.
+          </div>
+        </section>
+
+        <section id="shifts">
+          <h2>9) الورديات وجداول العمل</h2>
+          <h3>إنشاء وردية عادية</h3>
+          <ol class="steps">
+            <li>افتح تبويب <strong>الورديات</strong>.</li>
+            <li>اكتب كود الوردية واسمها.</li>
+            <li>حدد وقت البداية ووقت النهاية.</li>
+            <li>اختر أيام العمل.</li>
+            <li>حدد السماح بالتأخير وفترة الاستراحة.</li>
+            <li>حدد تاريخ بداية تطبيق الوردية.</li>
+            <li>احفظ الوردية.</li>
+          </ol>
+
+          <h3>إنشاء وردية بدوامين في اليوم</h3>
+          <ol class="steps">
+            <li>في نموذج الوردية املأ الفترة الأولى: بداية ونهاية.</li>
+            <li>املأ الفترة الثانية: بداية ثانية ونهاية ثانية.</li>
+            <li>احفظ الوردية.</li>
+          </ol>
+          <p>مثال: الفترة الأولى 08:00 إلى 12:00، والفترة الثانية 16:00 إلى 21:00.</p>
+
+          <h3>وردية لا تعتمد على الموقع</h3>
+          <ol class="steps">
+            <li>في نموذج الوردية اختر سياسة الموقع: لا يحتاج موقع.</li>
+            <li>اربط الموظف بهذه الوردية.</li>
+            <li>يمكن للموظف تسجيل الحضور حتى لو كان بعيداً عن الفرع، مع بقاء بقية شروط الحضور مثل الجهاز والحساب والوقت.</li>
+          </ol>
+
+          <h3>تعيين وردية</h3>
+          <ol class="steps">
+            <li>من تبويب <strong>الورديات</strong> اختر الموظف أو الفرع.</li>
+            <li>اختر الوردية المطلوبة.</li>
+            <li>حدد تاريخ البداية والنهاية إن وجدت.</li>
+            <li>احفظ التعيين.</li>
+          </ol>
+        </section>
+
+        <section id="attendance">
+          <h2>10) الحضور والانصراف</h2>
+          <h3>كيف يسجل الموظف حضور GPS؟</h3>
+          <ol class="steps">
+            <li>يفتح الموظف التطبيق من هاتفه المعتمد.</li>
+            <li>يدخل إلى تبويب <strong>الحضور</strong>.</li>
+            <li>يسمح للموقع إذا طلب الهاتف ذلك.</li>
+            <li>يضغط تسجيل حضور عبر GPS.</li>
+            <li>النظام يتحقق من الفرع، الوردية، المسافة، الجهاز، وحالة الحساب.</li>
+          </ol>
+
+          <h3>كيف يعمل حضور QR؟</h3>
+          <ol class="steps">
+            <li>المالك أو المدير يفتح تبويب <strong>العمليات</strong>.</li>
+            <li>ينشئ أو يدوّر QR للفرع.</li>
+            <li>يعرض الرمز للموظفين في الفرع.</li>
+            <li>الموظف يفتح التطبيق ويمسح QR.</li>
+          </ol>
+          <div class="warning">
+            تدوير QR يلغي الرموز السابقة. استخدم التدوير إذا تشك أن الرمز السابق تم تصويره أو مشاركته.
+          </div>
+
+          <h3>إضافة أو تصحيح حضور يدوي</h3>
+          <ol class="steps">
+            <li>افتح تبويب <strong>العمليات</strong>.</li>
+            <li>افتح قسم الحضور والانصراف.</li>
+            <li>اختر الموظف والفرع والوردية والتاريخ.</li>
+            <li>أدخل وقت الحضور والانصراف.</li>
+            <li>اكتب سبب التصحيح، ثم احفظ.</li>
+          </ol>
+          <div class="note">
+            أي حضور يدوي أو تصحيح يجب أن يكون بسبب واضح لأن النظام يحتفظ بالأثر الرقابي.
+          </div>
+
+          <h3>التأخير، نسيان الحضور، والانصراف</h3>
+          <ul>
+            <li>تبدأ فترة السماح من وقت بداية الوردية. بعد انتهائها يظهر للموظف تنبيه لتسجيل الحضور أو إرسال طلب استئذان.</li>
+            <li>إذا انتهت فترة العمل دون تسجيل الحضور، ينشئ النظام سجلاً بالغياب عند تشغيل الصيانة المجدولة، ولا يمنع المدير من التصحيح اليدوي بسبب موثق.</li>
+            <li>من إعداد الوردية يمكنك تحديد <strong>مهلة إثبات الانصراف بعد نهاية الوردية</strong> (افتراضيًا 15 دقيقة). بعدها يغلق النظام الجلسة غير المنصرفة كسجل يحتاج المتابعة.</li>
+            <li>لا يتاح الانصراف قبل تسجيل الحضور. وبعد الخروج باستئذان معتمد يظهر زر <strong>إثبات العودة من الاستئذان</strong>؛ يضغطه الموظف عند وصوله للموقع، وإذا تأخر تظهر عودة متأخرة في السجل.</li>
+            <li>يمكن للموظف طلب تمديد الاستئذان من شاشة الطلبات قبل انتهاء الإذن، ويصل الطلب للمراجعة.</li>
+          </ul>
+        </section>
+
+        <section id="requests">
+          <h2>11) الطلبات، الإجازات، المهام، والوثائق</h2>
+          <div class="grid">
+            <article class="mini">
+              <h3>الاستئذانات</h3>
+              <p>الموظف يحدد وقت الخروج والعودة أو يختار إلى نهاية الوردية. المالك أو المدير يراجع الطلب ويقبل أو يرفض، ثم يثبت الموظف عودته من زر الحضور.</p>
+            </article>
+            <article class="mini">
+              <h3>الإجازات</h3>
+              <p>أنشئ أنواع الإجازات والأرصدة أولاً، ثم راجع طلبات الموظفين. قبول الإجازة يؤثر على الرصيد والحضور.</p>
+            </article>
+            <article class="mini">
+              <h3>المهام</h3>
+              <p>أنشئ مهمة لموظف أو فرع أو مجموعة، وتابع الحالة والتعليقات. يستطيع الموظف إرفاق صورة أو PDF أو مستند أو ملف صوتي كإيصال، ويظهر للمالك رابط فتح المرفق من المهمة.</p>
+            </article>
+            <article class="mini">
+              <h3>الوثائق</h3>
+              <p>راجع وثائق الموظفين، تواريخ الانتهاء، والتنبيهات المتعلقة بالوثائق المنتهية أو القريبة من الانتهاء.</p>
+            </article>
+          </div>
+        </section>
+
+        <section id="reports">
+          <h2>12) التقارير والتصدير</h2>
+          <ol class="steps">
+            <li>افتح تبويب <strong>العمليات</strong>.</li>
+            <li>اذهب إلى قسم <strong>التقارير والتصدير</strong> أو <strong>مركز التقارير</strong>.</li>
+            <li>اختر نوع التقرير: حضور، خروج من النطاق، إجازات، استئذانات، مهام، وثائق، فروع، أو ورديات.</li>
+            <li>حدد الفترة الزمنية والفلاتر مثل الموظف، الفرع، القسم، المجموعة، أو الحالة.</li>
+            <li>اختر صيغة التصدير PDF أو Excel/XLSX.</li>
+            <li>اضغط إنشاء التصدير ثم نزّل الملف عند اكتماله.</li>
+          </ol>
+          <div class="warning">
+            ملف PDF مصمم للقراءة ويعرض اسم الشركة والفترة وتاريخ إنشاء الملف وعدد السجلات وجدولاً واضحاً. روابط التقارير المصدرة قد تنتهي بعد فترة؛ إذا انتهى الرابط ستظهر رسالة مفهومة، فأنشئ تصديراً جديداً بدلاً من مشاركة رابط قديم.
+          </div>
+        </section>
+
+        <section id="security">
+          <h2>13) الأمان والصلاحيات</h2>
+          <h3>الأدوار الأساسية</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>الدور</th>
+                  <th>الاستخدام المناسب</th>
+                  <th>ملاحظة</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>OWNER / المالك</td>
+                  <td>صلاحية كاملة على الشركة، الإعدادات، الموظفين، التقارير، والدعوات.</td>
+                  <td>لا تعط هذا الدور إلا لصاحب القرار.</td>
+                </tr>
+                <tr>
+                  <td>MANAGER / مدير</td>
+                  <td>إدارة تشغيلية واسعة للموظفين والحضور والطلبات.</td>
+                  <td>مناسب لمدير عام أو مدير عمليات.</td>
+                </tr>
+                <tr>
+                  <td>HR_OFFICER / موارد بشرية</td>
+                  <td>إدارة الموظفين والطلبات والوثائق والحضور حسب الصلاحيات.</td>
+                  <td>مناسب لمسؤول شؤون الموظفين.</td>
+                </tr>
+                <tr>
+                  <td>SUPERVISOR / مشرف</td>
+                  <td>متابعة فريق أو فرع أو مجموعة محددة.</td>
+                  <td>استخدم النطاق لتحديد ما يراه المشرف.</td>
+                </tr>
+                <tr>
+                  <td>EMPLOYEE / موظف</td>
+                  <td>تسجيل الحضور، المهام، الطلبات، والوثائق الخاصة به.</td>
+                  <td>هذا هو الدور الافتراضي لمعظم المستخدمين.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>إدارة صلاحيات موظف</h3>
+          <ol class="steps">
+            <li>افتح تبويب <strong>الموظفون</strong>.</li>
+            <li>افتح قسم <strong>الأدوار والصلاحيات والنطاق</strong> تحت بطاقة الموظف.</li>
+            <li>اختر الأدوار المناسبة.</li>
+            <li>استخدم السماح أو المنع لصلاحيات محددة عند الحاجة.</li>
+            <li>حدد النطاق: فروع، أقسام، أو مجموعات.</li>
+            <li>احفظ التعديل.</li>
+          </ol>
+
+          <h3>الأجهزة المعتمدة</h3>
+          <ol class="steps">
+            <li>أول جهاز يسجل به الموظف يصبح جهازه المعتمد غالباً.</li>
+            <li>إذا غيّر الموظف هاتفه، يرسل طلب تغيير جهاز.</li>
+            <li>المالك أو المدير يفتح <strong>طلبات الأجهزة</strong> من التطبيق.</li>
+            <li>يقبل أو يرفض الطلب. القبول يلغي اعتماد الجهاز القديم.</li>
+          </ol>
+
+          <div class="danger">
+            لا تشارك كلمات المرور أو رموز الدعوات في مجموعات عامة. كل موظف يجب أن يستخدم حسابه وجهازه، ولا يُسمح بمشاركة الحسابات.
+          </div>
+        </section>
+
+        <section id="troubleshooting">
+          <h2>14) حل المشاكل الشائعة</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>المشكلة</th>
+                  <th>السبب المحتمل</th>
+                  <th>الحل</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>لا يستطيع الموظف تسجيل الحضور</td>
+                  <td>لا يوجد فرع أو وردية فعالة، أو الموظف خارج النطاق، أو الجهاز غير معتمد.</td>
+                  <td>راجع تعيين الفرع، تعيين الوردية، نطاق الفرع، وحالة الجهاز.</td>
+                </tr>
+                <tr>
+                  <td>تظهر رسالة: Assign the employee or branch to an active shift</td>
+                  <td>الموظف أو الفرع غير مربوط بدوام فعال في تاريخ اليوم.</td>
+                  <td>من تبويب الورديات عيّن وردية للموظف أو للفرع، وتأكد من تاريخ البداية.</td>
+                </tr>
+                <tr>
+                  <td>الدعوة لا تعمل</td>
+                  <td>الكود قديم، مستخدم، منتهي، أو تم إنشاء كود جديد بعده.</td>
+                  <td>من تبويب الإدارة اضغط إعادة إنشاء/نسخ الكود وأرسل الكود الجديد.</td>
+                </tr>
+                <tr>
+                  <td>الخريطة لا تجد المكان</td>
+                  <td>كلمات البحث غير كافية أو الرمز/العنوان مكتوب بشكل مختلف.</td>
+                  <td>جرّب اسم المدينة + اسم الشارع، أو الرمز الوطني، ثم حدد الموقع يدوياً على الخريطة.</td>
+                </tr>
+                <tr>
+                  <td>الموظف غيّر هاتفه</td>
+                  <td>الجهاز الجديد يحتاج موافقة.</td>
+                  <td>افتح طلبات الأجهزة واقبل طلب الجهاز الجديد إذا كان صحيحاً.</td>
+                </tr>
+                <tr>
+                  <td>الموظف خارج الفرع لكنه يحتاج حضور</td>
+                  <td>الوردية الحالية تعتمد على الموقع.</td>
+                  <td>استخدم وردية لا تعتمد على الموقع للموظفين الذين يعملون خارج الفرع.</td>
+                </tr>
+                <tr>
+                  <td>التقرير لا يظهر كل البيانات</td>
+                  <td>الفلاتر أو النطاق أو التاريخ غير مناسب.</td>
+                  <td>امسح الفلاتر، وسّع الفترة، واختر كل الفروع أو كل الموظفين حسب الحاجة.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section>
+          <h2>15) قائمة فحص يومية للمالك</h2>
+          <div class="checklist">
+            <label><input type="checkbox"> مراجعة الحضور المتأخر أو الناقص.</label>
+            <label><input type="checkbox"> مراجعة جلسات الحضور المفتوحة بدون انصراف.</label>
+            <label><input type="checkbox"> مراجعة طلبات الإجازات والاستئذانات.</label>
+            <label><input type="checkbox"> مراجعة طلبات تغيير الأجهزة.</label>
+            <label><input type="checkbox"> مراجعة التنبيهات والوثائق المنتهية.</label>
+            <label><input type="checkbox"> التأكد من الفروع والورديات الجديدة قبل دعوة موظفين جدد.</label>
+          </div>
+        </section>
+
+        <section>
+          <h2>16) ماذا ترسل للمالك؟</h2>
+          <p>يمكنك إرسال النص التالي للمالك:</p>
+          <div class="note">
+            مرحباً، هذا رابط نظام حاضر لإدارة الحضور والموظفين:
+            <br>
+            الموقع: <a href="https://2-28-31-153.sslip.io/ar">https://2-28-31-153.sslip.io/ar</a>
+            <br>
+            تطبيق أندرويد: <a href="https://2-28-31-153.sslip.io/HADIR-owner.apk">https://2-28-31-153.sslip.io/HADIR-owner.apk</a>
+            <br>
+            الرجاء استخدام حساب المالك فقط للإدارة، وعدم مشاركة كلمة المرور. لإضافة موظف جديد، أنشئ دعوة من تبويب الإدارة وأرسل كود الدعوة للموظف.
+          </div>
+        </section>
+
+        <p class="footer">
+          تم إعداد هذا الدليل كملف HTML مستقل لمالك نظام حاضر. يمكن فتحه في المتصفح أو طباعته PDF.
+        </p>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

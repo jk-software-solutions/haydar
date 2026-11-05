@@ -57,25 +57,25 @@ export function BranchAssignmentForm({
     <article className="operation-form-card assignment-panel">
       <div className="section-heading">
         <div>
-          <h3>{ar ? "تعيين موظف لفرع" : "Assign employee to branch"}</h3>
+          <h3>{ar ? "تعيين موظفين لفرع" : "Assign employees to branch"}</h3>
           <p>
             {ar
-              ? "اختر الموظف والفرع وتاريخ بداية التعيين."
-              : "Choose the employee, branch, and effective start date."}
+              ? "اختر موظفاً واحداً أو أكثر، ثم الفرع وتاريخ بداية التعيين."
+              : "Choose one or more employees, then the branch and effective start date."}
           </p>
         </div>
       </div>
       <form action={action} className="portal-form assignment-form">
         <label>
-          {ar ? "الموظف" : "Employee"}
-          <select name="membership_id" required disabled={!canSubmit}>
-            <option value="">{ar ? "اختر موظف" : "Select employee"}</option>
+          {ar ? "الموظفون" : "Employees"}
+          <select name="membership_ids" multiple required disabled={!canSubmit} size={Math.min(6, Math.max(3, assignableEmployees.length))}>
             {assignableEmployees.map((employee) => (
               <option key={employee.membership_id} value={employee.membership_id}>
                 {employee.display_name} - {employee.email}
               </option>
             ))}
           </select>
+          <small>{ar ? "اضغط Ctrl لاختيار أكثر من موظف." : "Hold Ctrl/Cmd to select more than one."}</small>
         </label>
         <label>
           {ar ? "الفرع" : "Branch"}

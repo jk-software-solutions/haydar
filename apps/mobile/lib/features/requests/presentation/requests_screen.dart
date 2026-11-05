@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +22,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen>
   List<RequestItem> _leaves = <RequestItem>[];
   List<LeaveTypeItem> _leaveTypes = <LeaveTypeItem>[];
   List<LeaveBalanceItem> _leaveBalances = <LeaveBalanceItem>[];
+  Timer? _refreshTimer;
   bool _loading = true;
   String? _error;
   bool get _ar => Localizations.localeOf(context).languageCode == 'ar';
@@ -29,10 +32,15 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen>
     super.initState();
     _tabs = TabController(length: 3, vsync: this);
     _refresh();
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => unawaited(_refresh()),
+    );
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _tabs.dispose();
     super.dispose();
   }
@@ -64,11 +72,24 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen>
 
   String _message(Object error) {
     if (error is DioException && error.response?.data is Map<String, dynamic>) {
-      return ((error.response!.data as Map<String, dynamic>)['detail']
-              as String?) ??
-          '$error';
+      final data = error.response!.data as Map<String, dynamic>;
+      return switch (data['code']) {
+        'invalid_session' =>
+          _ar
+              ? 'انتهت الجلسة. سجّل الدخول مرة أخرى.'
+              : 'Your session expired. Sign in again.',
+        'permission_denied' =>
+          _ar
+              ? 'ليست لديك صلاحية لهذا الطلب.'
+              : 'You do not have permission for this request.',
+        _ =>
+          data['detail'] as String? ??
+              (_ar ? 'تعذر تحميل الطلبات.' : 'Requests could not be loaded.'),
+      };
     }
-    return '$error';
+    return _ar
+        ? 'تعذر الاتصال بالخادم. حاول مرة أخرى.'
+        : 'Could not reach the server. Try again.';
   }
 
   Future<DateTime?> _date({bool withTime = false}) async {
@@ -93,34 +114,103 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen>
     final reason = TextEditingController();
     final starts = await _date(withTime: true);
     if (starts == null || !mounted) return;
-    final ends = await _date(withTime: true);
-    if (ends == null || !mounted) return;
+    var type = 'multiple_hours';
+    DateTime? ends = starts.add(const Duration(hours: 1));
     final submitted = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(_ar ? 'طلب استئذان' : 'Permission request'),
-        content: TextField(
-          controller: reason,
-          decoration: InputDecoration(labelText: _ar ? 'السبب' : 'Reason'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(_ar ? 'طلب استئذان' : 'Permission request'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                DropdownButtonFormField<String>(
+                  initialValue: type,
+                  decoration: InputDecoration(
+                    labelText: _ar ? 'نوع الاستئذان' : 'Permission type',
+                  ),
+                  items: <DropdownMenuItem<String>>[
+                    DropdownMenuItem<String>(
+                      value: 'one_hour',
+                      child: Text(_ar ? 'ساعة واحدة' : 'One hour'),
+                    ),
+                    DropdownMenuItem<String>(
+                      value: 'multiple_hours',
+                      child: Text(_ar ? 'فترة محددة' : 'Specific period'),
+                    ),
+                    DropdownMenuItem<String>(
+                      value: 'until_shift_end',
+                      child: Text(
+                        _ar ? 'إلى نهاية الفترة/الوردية' : 'Until shift end',
+                      ),
+                    ),
+                    DropdownMenuItem<String>(
+                      value: 'custom',
+                      child: Text(_ar ? 'مخصص' : 'Custom'),
+                    ),
+                  ],
+                  onChanged: (value) => setDialogState(() {
+                    type = value ?? type;
+                    if (type == 'one_hour') {
+                      ends = starts.add(const Duration(hours: 1));
+                    }
+                    if (type == 'until_shift_end') {
+                      ends = null;
+                    }
+                  }),
+                ),
+                const SizedBox(height: 12),
+                if (type != 'until_shift_end')
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final picked = await _date(withTime: true);
+                      if (picked != null) {
+                        setDialogState(() => ends = picked);
+                      }
+                    },
+                    icon: const Icon(Icons.schedule_rounded),
+                    label: Text(
+                      ends == null
+                          ? (_ar ? 'اختر وقت الرجوع' : 'Choose return time')
+                          : '${_ar ? 'الرجوع' : 'Return'}: $ends',
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: reason,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    labelText: _ar ? 'السبب' : 'Reason',
+                    hintText: _ar
+                        ? 'مثلاً: مراجعة مستوصف'
+                        : 'Example: clinic visit',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(_ar ? 'إلغاء' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(_ar ? 'إرسال' : 'Submit'),
+            ),
+          ],
         ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(_ar ? 'إلغاء' : 'Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(_ar ? 'إرسال' : 'Submit'),
-          ),
-        ],
       ),
     );
-    if (submitted == true && reason.text.trim().length >= 3) {
+    if (submitted == true &&
+        reason.text.trim().length >= 3 &&
+        (type == 'until_shift_end' || ends != null)) {
       await ref
           .read(requestApiProvider)
           .createPermission(
             widget.session,
-            type: 'custom',
+            type: type,
             startsAt: starts,
             endsAt: ends,
             reason: reason.text.trim(),
@@ -128,6 +218,38 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen>
       await _refresh();
     }
     reason.dispose();
+  }
+
+  Future<void> _extendPermission(RequestItem item) async {
+    final currentEnd = DateTime.tryParse(item.to)?.toLocal();
+    if (currentEnd == null) return;
+    final selected = await _date(withTime: true);
+    if (selected == null || !mounted) return;
+    final end = selected;
+    if (!end.isAfter(currentEnd)) {
+      setState(
+        () => _error = _ar
+            ? 'اختر وقت رجوع بعد نهاية الإذن الحالي.'
+            : 'Choose a return time after the current permission ends.',
+      );
+      return;
+    }
+    try {
+      await ref
+          .read(requestApiProvider)
+          .createPermission(
+            widget.session,
+            type: 'custom',
+            startsAt: currentEnd,
+            endsAt: end,
+            reason: _ar
+                ? 'تمديد الإذن السابق: ${item.reason}'
+                : 'Extension of previous permission: ${item.reason}',
+          );
+      await _refresh();
+    } on Object catch (error) {
+      if (mounted) setState(() => _error = _message(error));
+    }
   }
 
   Future<void> _newLeave() async {
@@ -249,11 +371,31 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen>
           ),
         ...items.map(
           (item) => Card(
-            child: ListTile(
-              title: Text(item.type),
-              subtitle: Text('${item.from} – ${item.to}\n${item.reason}'),
-              isThreeLine: true,
-              trailing: Chip(label: Text(item.status)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(
+                children: <Widget>[
+                  ListTile(
+                    title: Text(_requestTypeLabel(item.type)),
+                    subtitle: Text(
+                      '${_formatDateTime(item.from)} – ${_formatDateTime(item.to)}\n${item.reason}',
+                    ),
+                    isThreeLine: true,
+                    trailing: Chip(label: Text(_statusLabel(item.status))),
+                  ),
+                  if (item.kind == 'permission' && item.status == 'approved')
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: TextButton.icon(
+                        onPressed: () => _extendPermission(item),
+                        icon: const Icon(Icons.more_time_rounded),
+                        label: Text(
+                          _ar ? 'طلب تمديد الإذن' : 'Request extension',
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -309,10 +451,12 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen>
         ..._leaves.map(
           (item) => Card(
             child: ListTile(
-              title: Text(item.type),
-              subtitle: Text('${item.from} – ${item.to}\n${item.reason}'),
+              title: Text(_requestTypeLabel(item.type)),
+              subtitle: Text(
+                '${_formatDateTime(item.from)} – ${_formatDateTime(item.to)}\n${item.reason}',
+              ),
               isThreeLine: true,
-              trailing: Chip(label: Text(item.status)),
+              trailing: Chip(label: Text(_statusLabel(item.status))),
             ),
           ),
         ),
@@ -394,5 +538,34 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen>
         ),
       ],
     );
+  }
+
+  String _requestTypeLabel(String type) => switch (type) {
+    'one_hour' => _ar ? 'استئذان لمدة ساعة' : 'One-hour permission',
+    'multiple_hours' =>
+      _ar ? 'استئذان لفترة محددة' : 'Specific-period permission',
+    'until_shift_end' =>
+      _ar ? 'استئذان حتى نهاية الوردية' : 'Permission until shift end',
+    'custom' => _ar ? 'استئذان مخصص' : 'Custom permission',
+    _ => _ar ? 'طلب' : 'Request',
+  };
+
+  String _statusLabel(String status) => switch (status) {
+    'pending' => _ar ? 'قيد الانتظار' : 'Pending',
+    'approved' => _ar ? 'تمت الموافقة' : 'Approved',
+    'rejected' => _ar ? 'مرفوض' : 'Rejected',
+    'cancelled' => _ar ? 'ملغى' : 'Cancelled',
+    _ => _ar ? 'قيد المراجعة' : 'Under review',
+  };
+
+  String _formatDateTime(String value) {
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) return value;
+    final local = parsed.toLocal();
+    final date = MaterialLocalizations.of(context).formatMediumDate(local);
+    final time = MaterialLocalizations.of(
+      context,
+    ).formatTimeOfDay(TimeOfDay.fromDateTime(local));
+    return '$date، $time';
   }
 }

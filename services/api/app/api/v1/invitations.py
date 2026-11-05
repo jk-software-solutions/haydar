@@ -87,7 +87,11 @@ async def create_invitation(
     context = tenant_context(auth_session)
     await require_permission(session, context, Permission.MEMBERS_CREATE)
     subscription = await active_subscription(session, context.company_id)
-    employee_limit = plan_limit(subscription[1], "employees") if subscription else 0
+    employee_limit = (
+        plan_limit(subscription[1], "employees", subscription[0].limits_override)
+        if subscription
+        else 0
+    )
     active_count = int(
         await session.scalar(
             select(func.count())
@@ -182,6 +186,47 @@ async def list_invitations(
         page=page,
         page_size=page_size,
         total=total or 0,
+    )
+
+
+@router.post("/{invitation_id}/resend-code", response_model=CreatedInvitationResponse)
+async def resend_invitation_code(
+    invitation_id: UUID,
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> CreatedInvitationResponse:
+    context = tenant_context(auth_session)
+    await require_permission(session, context, Permission.MEMBERS_CREATE)
+    invitation = await session.scalar(
+        select(Invitation)
+        .where(
+            Invitation.company_id == context.company_id,
+            Invitation.id == invitation_id,
+        )
+        .with_for_update()
+    )
+    if invitation is None:
+        raise ProblemError(
+            status=status.HTTP_404_NOT_FOUND,
+            code="invitation_not_found",
+            title="Invitation not found",
+            detail="The invitation does not exist in the current company.",
+        )
+    if invitation.status != "pending":
+        raise ProblemError(
+            status=status.HTTP_409_CONFLICT,
+            code="invitation_not_pending",
+            title="Invitation is not pending",
+            detail="Only pending invitations can receive a new activation code.",
+        )
+    raw_token = token_urlsafe(48)
+    invitation.token_hash = sha256(raw_token.encode("utf-8")).hexdigest()
+    invitation.expires_at = datetime.now(UTC) + timedelta(days=7)
+    await session.commit()
+    await session.refresh(invitation)
+    return CreatedInvitationResponse(
+        **invitation_response(invitation).model_dump(),
+        activation_token=raw_token,
     )
 
 

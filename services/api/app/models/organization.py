@@ -160,6 +160,11 @@ class EmployeeProfile(Base):
             ["departments.company_id", "departments.id"],
             name="fk_employee_profiles_company_department",
         ),
+        ForeignKeyConstraint(
+            ["company_id", "avatar_file_id"],
+            ["stored_files.company_id", "stored_files.id"],
+            name="fk_employee_profiles_company_avatar",
+        ),
         UniqueConstraint(
             "company_id",
             "membership_id",
@@ -177,6 +182,7 @@ class EmployeeProfile(Base):
     company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
     membership_id: Mapped[UUID] = mapped_column(nullable=False)
     department_id: Mapped[UUID | None]
+    avatar_file_id: Mapped[UUID | None]
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
     employee_number: Mapped[str | None] = mapped_column(String(64))
     phone: Mapped[str | None] = mapped_column(String(32))

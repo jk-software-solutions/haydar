@@ -97,7 +97,7 @@ export async function createPermissionAction(locale: string, formData: FormData)
   await mutate(locale, "/permission-requests", "POST", {
     request_type: text(formData, "request_type"),
     starts_at: text(formData, "starts_at"),
-    ends_at: text(formData, "ends_at"),
+    ends_at: optionalText(formData, "ends_at"),
     reason: text(formData, "reason"),
     attachment_file_id: optionalText(formData, "attachment_file_id"),
   });
@@ -260,6 +260,7 @@ export async function createPresenceRequestAction(locale: string, formData: Form
 export async function createReportExportAction(locale: string, formData: FormData): Promise<void> {
   await mutate(locale, "/reports/exports", "POST", {
     report_type: text(formData, "report_type"),
+    report_types: formData.getAll("report_types").map(String).filter(Boolean),
     export_format: text(formData, "export_format"),
     date_from: optionalText(formData, "date_from"),
     date_to: optionalText(formData, "date_to"),

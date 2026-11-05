@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.auth import CurrentAuthSession
@@ -24,8 +24,12 @@ from app.core.subscription_catalog import active_subscription
 from app.db.session import get_session
 from app.models.attendance import AttendanceRecord
 from app.models.devices import AuditLog
-from app.models.identity import CompanyMembership
-from app.models.organization import EmployeeBranchAssignment, EmployeeGroupMembership
+from app.models.identity import CompanyMembership, User
+from app.models.organization import (
+    EmployeeBranchAssignment,
+    EmployeeGroupMembership,
+    EmployeeProfile,
+)
 from app.models.workforce import (
     EmployeeDocument,
     LeaveBalance,
@@ -42,6 +46,7 @@ from app.models.workforce import (
 )
 from app.services.file_access import require_owned_attachment
 from app.services.idempotency import IdempotencyKey, begin_idempotency, complete_idempotency
+from app.services.notification_actor import membership_actor_name
 from app.services.push_delivery import FirebasePushAdapter
 
 tasks_router = APIRouter()
@@ -163,6 +168,13 @@ class TaskResponse(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+class TaskRecipientResponse(BaseModel):
+    id: UUID
+    display_name: str
+    email: str
+    role_code: str
 
 
 class LeaveTypeRequest(BaseModel):
@@ -320,6 +332,7 @@ class NotificationResponse(BaseModel):
     kind: str
     title: str
     body: str
+    actor_name: str | None = None
     target_type: str | None
     target_id: UUID | None
     urgent: bool
@@ -392,6 +405,7 @@ def notification_response(item: Notification) -> NotificationResponse:
         kind=item.kind,
         title=item.title,
         body=item.body,
+        actor_name=item.actor_name,
         target_type=item.target_type,
         target_id=item.target_id,
         urgent=item.urgent,
@@ -549,6 +563,58 @@ async def can_access_task(
     return task
 
 
+@tasks_router.get("/recipients", response_model=list[TaskRecipientResponse])
+async def list_task_recipients(
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> list[TaskRecipientResponse]:
+    """Return people this user may address with a task."""
+    context = tenant_context(auth_session)
+    await require_permission(session, context, Permission.TASKS_VIEW)
+    manager_roles = {"OWNER", "MANAGER", "HR_OFFICER", "SUPERVISOR"}
+    is_manager = context.membership.role_code in manager_roles
+    criteria = [
+        CompanyMembership.company_id == context.company_id,
+        CompanyMembership.status == "active",
+        CompanyMembership.id != context.membership.id,
+    ]
+    if is_manager:
+        criteria.append(CompanyMembership.role_code != "OWNER")
+        visible = await visible_membership_ids(session, context)
+        if visible is not None:
+            criteria.append(CompanyMembership.id.in_(visible))
+    else:
+        criteria.append(CompanyMembership.role_code.in_(manager_roles))
+    rows = await session.execute(
+        select(
+            CompanyMembership.id,
+            CompanyMembership.role_code,
+            User.email,
+            EmployeeProfile.display_name,
+        )
+        .join(User, User.id == CompanyMembership.user_id)
+        .outerjoin(
+            EmployeeProfile,
+            and_(
+                EmployeeProfile.company_id == CompanyMembership.company_id,
+                EmployeeProfile.membership_id == CompanyMembership.id,
+            ),
+        )
+        .where(*criteria)
+        .order_by(EmployeeProfile.display_name.asc().nullslast(), User.email.asc())
+        .limit(500)
+    )
+    return [
+        TaskRecipientResponse(
+            id=membership_id,
+            display_name=display_name or email,
+            email=email,
+            role_code=role_code,
+        )
+        for membership_id, role_code, email, display_name in rows
+    ]
+
+
 @tasks_router.post("", response_model=TaskResponse, status_code=201)
 async def create_task(
     payload: TaskCreateRequest,
@@ -556,7 +622,13 @@ async def create_task(
     session: DatabaseSession,
 ) -> TaskResponse:
     context = tenant_context(auth_session)
-    await require_permission(session, context, Permission.TASKS_MANAGE)
+    manager_roles = {"OWNER", "MANAGER", "HR_OFFICER", "SUPERVISOR"}
+    is_manager = context.membership.role_code in manager_roles
+    await require_permission(
+        session,
+        context,
+        Permission.TASKS_MANAGE if is_manager else Permission.TASKS_VIEW,
+    )
     subscription = await active_subscription(session, context.company_id)
     if subscription is None or not bool(subscription[1].features.get("tasks", False)):
         raise ProblemError(
@@ -597,7 +669,24 @@ async def create_task(
             title="Task assignee not found",
             detail="Every assignee must be active in this company.",
         )
-    visible = await visible_membership_ids(session, context)
+    if not is_manager:
+        manager_ids = set(
+            await session.scalars(
+                select(CompanyMembership.id).where(
+                    CompanyMembership.company_id == context.company_id,
+                    CompanyMembership.status == "active",
+                    CompanyMembership.role_code.in_(manager_roles),
+                )
+            )
+        )
+        if not target_ids.issubset(manager_ids):
+            raise ProblemError(
+                status=403,
+                code="task_recipient_not_manager",
+                title="Task recipient is not a manager",
+                detail="Employees may send tasks only to a manager or company owner.",
+            )
+    visible = await visible_membership_ids(session, context) if is_manager else None
     if visible is not None and not target_ids.issubset(visible):
         raise ProblemError(
             status=404,
@@ -615,6 +704,9 @@ async def create_task(
     )
     session.add(task)
     await session.flush()
+    actor_name = await membership_actor_name(
+        session, context.company_id, context.membership.id
+    )
     session.add_all(
         [
             TaskAssignee(company_id=context.company_id, task_id=task.id, membership_id=member_id)
@@ -627,6 +719,7 @@ async def create_task(
                 kind="task_created",
                 title=task.title,
                 body="A new task was assigned to you.",
+                actor_name=actor_name,
                 target_type="work_task",
                 target_id=task.id,
                 urgent=task.priority == "urgent",
@@ -804,13 +897,29 @@ async def update_task_status(
         )
     )
     if context.membership.id != task.created_by_membership_id:
+        actor_name = await membership_actor_name(
+            session, context.company_id, context.membership.id
+        )
+        completed_with_attachment = (
+            payload.status == "completed"
+            and payload.completion_attachment_file_id is not None
+        )
         session.add(
             Notification(
                 company_id=context.company_id,
                 membership_id=task.created_by_membership_id,
-                kind="task_status_changed",
+                kind="task_completed" if payload.status == "completed" else "task_status_changed",
                 title=task.title,
-                body=f"Task status changed to {task.status}.",
+                actor_name=actor_name,
+                body=(
+                    "The task was completed and a receipt was attached."
+                    if completed_with_attachment
+                    else (
+                        "The task was completed."
+                        if payload.status == "completed"
+                        else f"Task status changed to {task.status}."
+                    )
+                ),
                 target_type="work_task",
                 target_id=task.id,
             )
@@ -857,6 +966,9 @@ async def decide_task_extension(
             detail="This task has no pending extension request.",
         )
     now = datetime.now(UTC)
+    actor_name = await membership_actor_name(
+        session, context.company_id, context.membership.id
+    )
     old_status = task.status
     extension.status = payload.decision
     extension.decided_by_membership_id = context.membership.id
@@ -883,6 +995,7 @@ async def decide_task_extension(
             membership_id=extension.requested_by_membership_id,
             kind=f"task_extension_{payload.decision}",
             title=task.title,
+            actor_name=actor_name,
             body=(
                 "The task extension was approved."
                 if payload.decision == "approved"
@@ -984,6 +1097,36 @@ async def add_task_comment(
         **payload.model_dump(),
     )
     session.add(comment)
+    assignee_ids = set(
+        await session.scalars(
+            select(TaskAssignee.membership_id).where(
+                TaskAssignee.company_id == context.company_id,
+                TaskAssignee.task_id == task.id,
+            )
+        )
+    )
+    notification_recipient_ids = {
+        task.created_by_membership_id,
+        *assignee_ids,
+    } - {context.membership.id}
+    actor_name = await membership_actor_name(
+        session, context.company_id, context.membership.id
+    )
+    session.add_all(
+        [
+            Notification(
+                company_id=context.company_id,
+                membership_id=membership_id,
+                kind="task_comment_added",
+                title=task.title,
+                body="A new message was added to a task.",
+                actor_name=actor_name,
+                target_type="work_task",
+                target_id=task.id,
+            )
+            for membership_id in notification_recipient_ids
+        ]
+    )
     await session.commit()
     await session.refresh(comment)
     return TaskCommentResponse.model_validate(comment, from_attributes=True)
@@ -1179,6 +1322,9 @@ async def create_leave_request(
             CompanyMembership.role_code.in_(("OWNER", "MANAGER", "HR_OFFICER")),
         )
     )
+    actor_name = await membership_actor_name(
+        session, context.company_id, context.membership.id
+    )
     session.add_all(
         [
             Notification(
@@ -1187,6 +1333,7 @@ async def create_leave_request(
                 kind="leave_requested",
                 title="Leave request",
                 body="An employee submitted a leave request.",
+                actor_name=actor_name,
                 target_type="leave_request",
                 target_id=item.id,
             )
@@ -1289,6 +1436,9 @@ async def review_leave_request(
     item.reviewed_by_membership_id = context.membership.id
     item.review_comment = payload.comment
     item.reviewed_at = datetime.now(UTC)
+    actor_name = await membership_actor_name(
+        session, context.company_id, context.membership.id
+    )
     session.add_all(
         [
             Notification(
@@ -1297,6 +1447,7 @@ async def review_leave_request(
                 kind="leave_reviewed",
                 title="Leave request reviewed",
                 body=f"Your leave request was {payload.decision}.",
+                actor_name=actor_name,
                 target_type="leave_request",
                 target_id=item.id,
             ),

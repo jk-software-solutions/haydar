@@ -10,7 +10,7 @@ export default async function LoginPage({ params }: { params: Promise<{ lang: st
   return (
     <main className="portal-shell">
       <section className="portal-card">
-        <p className="foundation-eyebrow">HADIR | حاضر</p>
+        <p className="foundation-eyebrow">DawamTech | دوام تك</p>
         <h1>{lang === "ar" ? "تسجيل الدخول" : "Sign in"}</h1>
         <p>
           {lang === "ar"

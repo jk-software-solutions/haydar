@@ -48,3 +48,30 @@ async def send_password_reset_email(*, recipient: str, token: str) -> bool:
         logger.exception("password_reset_delivery_failed")
         return False
     return True
+
+
+async def send_notification_email(
+    *,
+    recipient: str,
+    title: str,
+    body: str,
+    actor_name: str | None = None,
+) -> bool:
+    """Deliver an in-app notification by email when the member enabled email alerts."""
+
+    settings = get_settings()
+    if not settings.smtp_host or not settings.smtp_from_email:
+        logger.warning("notification_email_delivery_not_configured")
+        return False
+    message = EmailMessage()
+    message["Subject"] = f"HADIR: {title}"
+    message["From"] = settings.smtp_from_email
+    message["To"] = recipient
+    actor_line = f"\n\nActor / المنفّذ: {actor_name}" if actor_name else ""
+    message.set_content(f"{body}{actor_line}\n")
+    try:
+        await asyncio.to_thread(_send_smtp, message)
+    except (OSError, smtplib.SMTPException):
+        logger.exception("notification_email_delivery_failed")
+        return False
+    return True

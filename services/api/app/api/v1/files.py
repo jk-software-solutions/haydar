@@ -20,6 +20,7 @@ from app.core.subscription_catalog import active_subscription, plan_limit
 from app.db.session import get_session
 from app.models.attendance import AttendanceEvent, AttendanceRecord, PermissionRequest
 from app.models.files import StoredFile
+from app.models.identity import Company
 from app.models.workforce import (
     EmployeeDocument,
     LeaveRequest,
@@ -27,6 +28,7 @@ from app.models.workforce import (
     TaskComment,
     WorkTask,
 )
+from app.models.organization import EmployeeProfile
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_session)]
@@ -38,8 +40,30 @@ ALLOWED_CONTENT_TYPES = {
     "text/plain",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    # Task conversations may include voice notes and other audio evidence.
+    "audio/aac",
+    "audio/mp4",
+    "audio/mpeg",
+    "audio/ogg",
+    "audio/wav",
+    "audio/webm",
+    "audio/3gpp",
+    "application/ogg",
 }
 MAX_FILE_BYTES = 10 * 1024 * 1024
+VIDEO_EXTENSIONS = {
+    ".3g2",
+    ".3gp",
+    ".avi",
+    ".m4v",
+    ".mkv",
+    ".mov",
+    ".mp4",
+    ".mpeg",
+    ".mpg",
+    ".webm",
+    ".wmv",
+}
 
 
 class FileResponse(BaseModel):
@@ -58,6 +82,10 @@ async def can_download_linked_file(
     context = tenant_context(auth_session)
     member_id = context.membership.id
     personal_references = (
+        select(Company.id).where(
+            Company.id == context.company_id,
+            Company.logo_file_id == file_id,
+        ),
         select(PermissionRequest.id).where(
             PermissionRequest.company_id == context.company_id,
             PermissionRequest.membership_id == member_id,
@@ -72,6 +100,11 @@ async def can_download_linked_file(
             EmployeeDocument.company_id == context.company_id,
             EmployeeDocument.membership_id == member_id,
             EmployeeDocument.attachment_file_id == file_id,
+        ),
+        select(EmployeeProfile.id).where(
+            EmployeeProfile.company_id == context.company_id,
+            EmployeeProfile.membership_id == member_id,
+            EmployeeProfile.avatar_file_id == file_id,
         ),
         select(AttendanceEvent.id)
         .join(
@@ -139,6 +172,15 @@ async def can_download_linked_file(
             query = query.where(PermissionRequest.membership_id.in_(scoped_members))
         if await referenced_for_members(query):
             return True
+    if Permission.MEMBERS_VIEW.value in permissions:
+        query = select(EmployeeProfile.id).where(
+            EmployeeProfile.company_id == context.company_id,
+            EmployeeProfile.avatar_file_id == file_id,
+        )
+        if scoped_members is not None:
+            query = query.where(EmployeeProfile.membership_id.in_(scoped_members))
+        if await referenced_for_members(query):
+            return True
     if Permission.LEAVE_VIEW.value in permissions:
         query = select(LeaveRequest.id).where(
             LeaveRequest.company_id == context.company_id,
@@ -188,12 +230,36 @@ async def can_download_linked_file(
                 )
             )
         )
-        query = select(TaskAssignee.id).where(
-            TaskAssignee.company_id == context.company_id,
-            TaskAssignee.task_id.in_(task_ids),
+        # A task receipt/comment is visible to every member who can see the
+        # task, including its creator (owner/manager), not only assignees.
+        # Previously the query only selected TaskAssignee rows, so an owner
+        # who created a task could see the receipt link but received 403 when
+        # opening it.
+        query = select(WorkTask.id).where(
+            WorkTask.company_id == context.company_id,
+            WorkTask.id.in_(task_ids),
+            or_(
+                WorkTask.created_by_membership_id == member_id,
+                WorkTask.id.in_(
+                    select(TaskAssignee.task_id).where(
+                        TaskAssignee.company_id == context.company_id,
+                        TaskAssignee.membership_id == member_id,
+                    )
+                ),
+            ),
         )
         if scoped_members is not None:
-            query = query.where(TaskAssignee.membership_id.in_(scoped_members))
+            query = query.where(
+                or_(
+                    WorkTask.created_by_membership_id.in_(scoped_members),
+                    WorkTask.id.in_(
+                        select(TaskAssignee.task_id).where(
+                            TaskAssignee.company_id == context.company_id,
+                            TaskAssignee.membership_id.in_(scoped_members),
+                        )
+                    ),
+                )
+            )
         if await referenced_for_members(query):
             return True
     return False
@@ -215,12 +281,21 @@ async def upload_file(
             detail="File uploads require an active subscription.",
         )
     content_type = upload.content_type or "application/octet-stream"
+    filename = (upload.filename or "upload").replace("\r", "").replace("\n", "")[:255]
+    extension = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if extension in VIDEO_EXTENSIONS:
+        raise ProblemError(
+            status=415,
+            code="video_upload_not_allowed",
+            title="Video uploads are not allowed",
+            detail="Attach an image, PDF, document, spreadsheet, or audio file instead of a video.",
+        )
     if content_type not in ALLOWED_CONTENT_TYPES:
         raise ProblemError(
             status=415,
             code="file_type_not_allowed",
             title="File type not allowed",
-            detail="Upload a supported image, PDF, text, Word, or Excel file.",
+            detail="Upload a supported image, PDF, text, Word, Excel, or audio file.",
         )
     content = await upload.read(MAX_FILE_BYTES + 1)
     if not content or len(content) > MAX_FILE_BYTES:
@@ -230,7 +305,11 @@ async def upload_file(
             title="File size invalid",
             detail="Files must be non-empty and no larger than 10 MB.",
         )
-    storage_limit = plan_limit(subscription[1], "storage_mb") * 1024 * 1024
+    storage_limit = (
+        plan_limit(subscription[1], "storage_mb", subscription[0].limits_override)
+        * 1024
+        * 1024
+    )
     used = int(
         await session.scalar(
             select(func.coalesce(func.sum(StoredFile.size_bytes), 0)).where(
@@ -246,7 +325,6 @@ async def upload_file(
             title="Storage limit reached",
             detail="Delete files or upgrade the subscription before uploading.",
         )
-    filename = (upload.filename or "upload").replace("\r", "").replace("\n", "")[:255]
     item = StoredFile(
         company_id=company.id,
         uploaded_by_membership_id=membership.id,

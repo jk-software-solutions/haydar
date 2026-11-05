@@ -12,6 +12,7 @@ export const branchSchema = z.object({
   longitude: z.coerce.number().min(-180).max(180),
   geofence_radius_m: z.coerce.number().int().min(20).max(10000),
   timezone: z.string().trim().min(1).max(64),
+  is_active: z.coerce.boolean(),
 });
 
 export const branchAssignmentSchema = z.object({
@@ -19,4 +20,9 @@ export const branchAssignmentSchema = z.object({
   branch_id: z.string().uuid(),
   effective_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   reason: z.string().trim().min(5).max(1000),
+});
+
+export const wifiNetworkSchema = z.object({
+  ssid: z.string().trim().min(1).max(128),
+  bssid: z.string().trim().regex(/^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/),
 });

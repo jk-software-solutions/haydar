@@ -1,13 +1,24 @@
 from datetime import UTC, date, datetime, timedelta
+from html import escape
 from io import BytesIO
+from pathlib import Path
 from typing import Annotated, Any, Literal
 from uuid import UUID
+from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query, Response, status
 from openpyxl import Workbook
 from pydantic import BaseModel, ConfigDict, Field
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.pdfgen import canvas
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +38,7 @@ from app.core.errors import ProblemError
 from app.core.subscription_catalog import active_subscription
 from app.db.session import get_session
 from app.models.attendance import AttendanceRecord, GeofenceExitEvent, PermissionRequest
+from app.models.files import StoredFile
 from app.models.organization import (
     Branch,
     EmployeeBranchAssignment,
@@ -35,11 +47,24 @@ from app.models.organization import (
     Shift,
 )
 from app.models.platform import AttendanceLeaderboardSetting, ExportJob
-from app.models.workforce import EmployeeDocument, LeaveRequest, TaskAssignee, WorkTask
+from app.models.workforce import (
+    EmployeeDocument,
+    LeaveRequest,
+    TaskAssignee,
+    TaskStatusHistory,
+    WorkTask,
+)
 from app.services.idempotency import IdempotencyKey, begin_idempotency, complete_idempotency
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_session)]
+
+try:
+    import arabic_reshaper
+    from bidi.algorithm import get_display as bidi_display
+except ImportError:  # Optional until the API environment installs Arabic PDF support.
+    arabic_reshaper = None
+    bidi_display = None
 
 
 class AttendanceReportItem(BaseModel):
@@ -103,6 +128,16 @@ class ExportCreateRequest(BaseModel):
         "branches",
         "shifts",
     ]
+    report_types: list[Literal[
+        "attendance",
+        "geofence_exits",
+        "leave",
+        "permissions",
+        "tasks",
+        "documents",
+        "branches",
+        "shifts",
+    ]] = Field(default_factory=list, max_length=8)
     export_format: Literal["pdf", "xlsx"]
     date_from: date | None = None
     date_to: date | None = None
@@ -126,6 +161,7 @@ class ExportJobResponse(BaseModel):
     completed_at: datetime | None
     expires_at: datetime
     created_at: datetime
+    filters: dict[str, object] = Field(default_factory=dict)
 
 
 class LeaderboardSettingRequest(BaseModel):
@@ -932,13 +968,208 @@ async def document_report(
     )
 
 
+ReportDisplayMaps = tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]
+
+REPORT_TITLES = {
+    "ar": {
+        "attendance": "تقرير الحضور والانصراف",
+        "geofence_exits": "تقرير مغادرة نطاق الفرع",
+        "leave": "تقرير الإجازات",
+        "permissions": "تقرير الاستئذانات",
+        "tasks": "تقرير المهام",
+        "documents": "تقرير وثائق الموظفين",
+        "branches": "تقرير الفروع",
+        "shifts": "تقرير الورديات",
+    },
+    "en": {
+        "attendance": "Attendance and Check-out Report",
+        "geofence_exits": "Branch Geofence Exit Report",
+        "leave": "Leave Report",
+        "permissions": "Permission Requests Report",
+        "tasks": "Work Tasks Report",
+        "documents": "Employee Documents Report",
+        "branches": "Branches Report",
+        "shifts": "Shifts Report",
+    },
+}
+
+REPORT_HEADERS = {
+    "ar": {
+        "attendance": ["التاريخ", "الموظف", "الفرع", "الوردية", "الحالة", "الحضور", "الانصراف", "ساعات العمل", "التأخير", "الانصراف المبكر"],
+        "geofence_exits": ["وقت الرصد", "الموظف", "الفرع", "الوردية", "الحالة", "المسافة", "دقة الموقع", "ملاحظة المراجعة"],
+        "leave": ["الموظف", "من تاريخ", "إلى تاريخ", "عدد الأيام", "الحالة", "السبب"],
+        "permissions": ["الموظف", "نوع الاستئذان", "من وقت", "إلى وقت", "الحالة", "السبب"],
+        "tasks": ["المهمة", "تاريخ الإنشاء", "تاريخ الإنجاز", "موعد التسليم", "الأولوية", "الحالة", "أنشأها"],
+        "documents": ["الموظف", "نوع الوثيقة", "رقم الوثيقة", "تاريخ الإصدار", "تاريخ الانتهاء", "حالة المراجعة"],
+        "branches": ["رمز الفرع", "اسم الفرع", "العنوان", "المنطقة الزمنية", "نطاق الحضور", "الحالة"],
+        "shifts": ["رمز الوردية", "اسم الوردية", "بداية الوردية", "نهاية الوردية", "وردية ليلية", "السماح بالدقائق", "الحالة"],
+    },
+    "en": {
+        "attendance": ["Date", "Employee", "Branch", "Shift", "Status", "Check in", "Check out", "Worked time", "Late", "Early departure"],
+        "geofence_exits": ["Detected at", "Employee", "Branch", "Shift", "Status", "Distance", "Location accuracy", "Review note"],
+        "leave": ["Employee", "From date", "To date", "Days", "Status", "Reason"],
+        "permissions": ["Employee", "Permission type", "From time", "To time", "Status", "Reason"],
+        "tasks": ["Task", "Created at", "Completed at", "Due date", "Priority", "Status", "Created by"],
+        "documents": ["Employee", "Document type", "Document number", "Issued on", "Expires on", "Review status"],
+        "branches": ["Branch code", "Branch name", "Address", "Timezone", "Attendance radius", "Status"],
+        "shifts": ["Shift code", "Shift name", "Start time", "End time", "Overnight", "Grace period", "Status"],
+    },
+}
+
+STATUS_LABELS = {
+    "ar": {
+        "on_time": "حاضر في الوقت",
+        "late": "متأخر",
+        "on_permission": "استئذان معتمد",
+        "permission_return_late": "عودة متأخرة من الاستئذان",
+        "early_departure_unauthorized": "انصراف مبكر بدون إذن",
+        "unauthorized": "غير مصرح به",
+        "confirmed_unauthorized": "مغادرة غير مصرح بها مؤكدة",
+        "missing_check_out": "لم يسجل الانصراف",
+        "manual_attendance": "تسجيل يدوي",
+        "absent": "غائب",
+        "on_leave": "في إجازة",
+        "pending": "قيد الانتظار",
+        "approved": "معتمد",
+        "rejected": "مرفوض",
+        "new": "جديدة",
+        "viewed": "تمت المشاهدة",
+        "in_progress": "قيد التنفيذ",
+        "completed": "مكتملة",
+        "blocked": "متوقفة",
+        "postponed": "مؤجلة",
+        "needs_more_time": "تحتاج وقتاً إضافياً",
+        "active": "نشط",
+        "inactive": "غير نشط",
+        "pending_review": "بانتظار المراجعة",
+        "accepted": "مقبول",
+        "expired": "منتهي",
+        "export_expired": "انتهت صلاحية الملف",
+    },
+    "en": {
+        "on_time": "On time",
+        "late": "Late",
+        "on_permission": "Approved permission",
+        "permission_return_late": "Late permission return",
+        "early_departure_unauthorized": "Unauthorized early departure",
+        "unauthorized": "Unauthorized",
+        "confirmed_unauthorized": "Confirmed unauthorized exit",
+        "missing_check_out": "Missing check-out",
+        "manual_attendance": "Manual entry",
+        "absent": "Absent",
+        "on_leave": "On leave",
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "new": "New",
+        "viewed": "Viewed",
+        "in_progress": "In progress",
+        "completed": "Completed",
+        "blocked": "Blocked",
+        "postponed": "Postponed",
+        "needs_more_time": "Needs more time",
+        "active": "Active",
+        "inactive": "Inactive",
+        "pending_review": "Pending review",
+        "accepted": "Accepted",
+        "expired": "Expired",
+        "export_expired": "Export expired",
+    },
+}
+
+VALUE_LABELS = {
+    "ar": {
+        "low": "منخفضة",
+        "normal": "عادية",
+        "high": "عالية",
+        "urgent": "عاجلة",
+        "one_hour": "ساعة واحدة",
+        "multiple_hours": "فترة محددة",
+        "until_shift_end": "حتى نهاية الوردية",
+        "custom": "مخصص",
+        "residency": "إقامة",
+        "passport": "جواز سفر",
+        "medical_insurance": "تأمين طبي",
+        "employment_contract": "عقد عمل",
+        "driving_license": "رخصة قيادة",
+        "vehicle_insurance": "تأمين مركبة",
+        "yes": "نعم",
+        "no": "لا",
+    },
+    "en": {
+        "low": "Low",
+        "normal": "Normal",
+        "high": "High",
+        "urgent": "Urgent",
+        "one_hour": "One hour",
+        "multiple_hours": "Specific period",
+        "until_shift_end": "Until shift end",
+        "custom": "Custom",
+        "residency": "Residency",
+        "passport": "Passport",
+        "medical_insurance": "Medical insurance",
+        "employment_contract": "Employment contract",
+        "driving_license": "Driving license",
+        "vehicle_insurance": "Vehicle insurance",
+        "yes": "Yes",
+        "no": "No",
+    },
+}
+
+
+async def report_display_maps(session: AsyncSession, company_id: UUID) -> ReportDisplayMaps:
+    employees = await session.scalars(
+        select(EmployeeProfile).where(EmployeeProfile.company_id == company_id)
+    )
+    branches = await session.scalars(select(Branch).where(Branch.company_id == company_id))
+    shifts = await session.scalars(select(Shift).where(Shift.company_id == company_id))
+    employee_names = {str(item.membership_id): item.display_name for item in employees}
+    branch_names = {str(item.id): item.name for item in branches}
+    branch_timezones = {str(item.id): item.timezone for item in branches}
+    shift_names = {str(item.id): item.name for item in shifts}
+    return employee_names, branch_names, branch_timezones, shift_names
+
+
+def value_label(value: object, locale: str) -> str:
+    text = str(value)
+    return STATUS_LABELS.get(locale, STATUS_LABELS["en"]).get(
+        text,
+        VALUE_LABELS.get(locale, VALUE_LABELS["en"]).get(text, text),
+    )
+
+
+def mapped_name(value: object, mapping: dict[str, str], fallback: str) -> str:
+    text = mapping.get(str(value))
+    return text or fallback
+
+
+def format_report_datetime(value: datetime | None, timezone_name: str) -> str:
+    if value is None:
+        return "—"
+    try:
+        local_value = value.astimezone(ZoneInfo(timezone_name))
+    except (ValueError, TypeError):
+        local_value = value
+    return local_value.strftime("%Y-%m-%d %H:%M")
+
+
+def format_report_date(value: date | None) -> str:
+    return value.isoformat() if value is not None else "—"
+
+
 async def export_rows(
     session: AsyncSession,
     company_id: UUID,
     payload: ExportCreateRequest,
     visible_members: frozenset[UUID] | None,
     visible_branches: frozenset[UUID] | None,
+    display_maps: ReportDisplayMaps,
 ) -> tuple[list[str], list[list[object]]]:
+    locale = payload.locale
+    employee_names, branch_names, branch_timezones, shift_names = display_maps
+
+    def headers_for(report_type: str) -> list[str]:
+        return REPORT_HEADERS[locale][report_type]
     if payload.report_type == "attendance":
         criteria = attendance_criteria(
             company_id,
@@ -958,29 +1189,18 @@ async def export_rows(
             .order_by(AttendanceRecord.work_date.desc())
             .limit(10000)
         )
-        return [
-            "Date",
-            "Employee",
-            "Branch",
-            "Shift",
-            "Status",
-            "Check in",
-            "Check out",
-            "Worked min",
-            "Late min",
-            "Early min",
-        ], [
+        return headers_for("attendance"), [
             [
                 item.work_date.isoformat(),
-                str(item.membership_id),
-                str(item.branch_id),
-                str(item.shift_id),
-                item.status,
-                item.checked_in_at.isoformat() if item.checked_in_at else "",
-                item.checked_out_at.isoformat() if item.checked_out_at else "",
-                item.worked_minutes,
-                item.late_minutes,
-                item.early_departure_minutes,
+                mapped_name(item.membership_id, employee_names, "الموظف" if locale == "ar" else "Employee"),
+                mapped_name(item.branch_id, branch_names, "الفرع" if locale == "ar" else "Branch"),
+                mapped_name(item.shift_id, shift_names, "الوردية" if locale == "ar" else "Shift"),
+                value_label(item.status, locale),
+                format_report_datetime(item.checked_in_at, branch_timezones.get(str(item.branch_id), "Asia/Riyadh")),
+                format_report_datetime(item.checked_out_at, branch_timezones.get(str(item.branch_id), "Asia/Riyadh")),
+                f"{item.worked_minutes} {'دقيقة' if locale == 'ar' else 'min'}",
+                f"{item.late_minutes} {'دقيقة' if locale == 'ar' else 'min'}",
+                f"{item.early_departure_minutes} {'دقيقة' if locale == 'ar' else 'min'}",
             ]
             for item in records
         ]
@@ -1002,25 +1222,16 @@ async def export_rows(
             .order_by(GeofenceExitEvent.detected_at.desc())
             .limit(10000)
         )
-        return [
-            "Detected",
-            "Employee",
-            "Branch",
-            "Shift",
-            "Status",
-            "Distance m",
-            "Accuracy m",
-            "Review",
-        ], [
+        return headers_for("geofence_exits"), [
             [
-                item.detected_at.isoformat(),
-                str(item.membership_id),
-                str(item.branch_id),
-                str(item.shift_id),
-                item.status,
-                item.distance_m or 0,
-                item.accuracy_m or 0,
-                item.review_comment or "",
+                format_report_datetime(item.detected_at, branch_timezones.get(str(item.branch_id), "Asia/Riyadh")),
+                mapped_name(item.membership_id, employee_names, "الموظف" if locale == "ar" else "Employee"),
+                mapped_name(item.branch_id, branch_names, "الفرع" if locale == "ar" else "Branch"),
+                mapped_name(item.shift_id, shift_names, "الوردية" if locale == "ar" else "Shift"),
+                value_label(item.status, locale),
+                f"{item.distance_m or 0} m",
+                f"{item.accuracy_m or 0} m",
+                item.review_comment or "—",
             ]
             for item in items
         ]
@@ -1040,13 +1251,13 @@ async def export_rows(
             .order_by(LeaveRequest.created_at.desc())
             .limit(10000)
         )
-        return ["Employee", "From", "To", "Days", "Status", "Reason"], [
+        return headers_for("leave"), [
             [
-                str(item.membership_id),
+                mapped_name(item.membership_id, employee_names, "الموظف" if locale == "ar" else "Employee"),
                 item.starts_on.isoformat(),
                 item.ends_on.isoformat(),
-                item.days,
-                item.status,
+                f"{item.days} {'يوم' if locale == 'ar' else 'days'}",
+                value_label(item.status, locale),
                 item.reason,
             ]
             for item in leave_items
@@ -1075,13 +1286,13 @@ async def export_rows(
             .order_by(PermissionRequest.created_at.desc())
             .limit(10000)
         )
-        return ["Employee", "Type", "From", "To", "Status", "Reason"], [
+        return headers_for("permissions"), [
             [
-                str(item.membership_id),
-                item.request_type,
-                item.starts_at.isoformat(),
-                item.ends_at.isoformat(),
-                item.status,
+                mapped_name(item.membership_id, employee_names, "الموظف" if locale == "ar" else "Employee"),
+                value_label(item.request_type, locale),
+                format_report_datetime(item.starts_at, "Asia/Riyadh"),
+                format_report_datetime(item.ends_at, "Asia/Riyadh"),
+                value_label(item.status, locale),
                 item.reason,
             ]
             for item in permission_items
@@ -1110,21 +1321,33 @@ async def export_rows(
             )
         if payload.status:
             task_criteria.append(WorkTask.status == payload.status)
-        task_items = await session.scalars(
-            select(WorkTask)
+        completion_time = (
+            select(func.max(TaskStatusHistory.created_at))
+            .where(
+                TaskStatusHistory.company_id == WorkTask.company_id,
+                TaskStatusHistory.task_id == WorkTask.id,
+                TaskStatusHistory.new_status == "completed",
+            )
+            .correlate(WorkTask)
+            .scalar_subquery()
+        )
+        task_items = await session.execute(
+            select(WorkTask, completion_time.label("completed_at"))
             .where(*task_criteria)
             .order_by(WorkTask.created_at.desc())
             .limit(10000)
         )
-        return ["Title", "Priority", "Due", "Status", "Created by"], [
+        return headers_for("tasks"), [
             [
                 item.title,
-                item.priority,
-                item.due_at.isoformat() if item.due_at else "",
-                item.status,
-                str(item.created_by_membership_id),
+                format_report_datetime(item.created_at, "Asia/Riyadh"),
+                format_report_datetime(completed_at, "Asia/Riyadh"),
+                format_report_datetime(item.due_at, "Asia/Riyadh"),
+                value_label(item.priority, locale),
+                value_label(item.status, locale),
+                mapped_name(item.created_by_membership_id, employee_names, "الموظف" if locale == "ar" else "Employee"),
             ]
-            for item in task_items
+            for item, completed_at in task_items
         ]
     if payload.report_type == "documents":
         document_criteria: list[Any] = [EmployeeDocument.company_id == company_id]
@@ -1142,14 +1365,14 @@ async def export_rows(
             .order_by(EmployeeDocument.expires_on.asc().nullslast())
             .limit(10000)
         )
-        return ["Employee", "Type", "Number", "Issued", "Expires", "Review"], [
+        return headers_for("documents"), [
             [
-                str(item.membership_id),
-                item.document_type,
-                item.document_number or "",
-                item.issued_on.isoformat() if item.issued_on else "",
-                item.expires_on.isoformat() if item.expires_on else "",
-                item.review_status,
+                mapped_name(item.membership_id, employee_names, "الموظف" if locale == "ar" else "Employee"),
+                value_label(item.document_type, locale),
+                item.document_number or "—",
+                format_report_date(item.issued_on),
+                format_report_date(item.expires_on),
+                value_label(item.review_status, locale),
             ]
             for item in document_items
         ]
@@ -1162,40 +1385,70 @@ async def export_rows(
             )
             .order_by(Branch.name.asc())
         )
-        return ["Code", "Name", "Address", "Timezone", "Radius m", "Active"], [
+        return headers_for("branches"), [
             [
                 item.code,
                 item.name,
-                item.full_address,
+                item.full_address or "—",
                 item.timezone,
-                item.geofence_radius_m,
-                item.is_active,
+                f"{item.geofence_radius_m} m",
+                value_label("active" if item.is_active else "inactive", locale),
             ]
             for item in branch_items
         ]
     shift_items = await session.scalars(
         select(Shift).where(Shift.company_id == company_id).order_by(Shift.name.asc())
     )
-    return ["Code", "Name", "Start", "End", "Overnight", "Grace", "Active"], [
+    return headers_for("shifts"), [
         [
             item.code,
             item.name,
             item.start_time.isoformat(),
             item.end_time.isoformat(),
-            item.is_overnight,
-            item.grace_period_minutes,
-            item.is_active,
+            value_label("yes" if item.is_overnight else "no", locale),
+            f"{item.grace_period_minutes} {'دقيقة' if locale == 'ar' else 'min'}",
+            value_label("active" if item.is_active else "inactive", locale),
         ]
         for item in shift_items
     ]
 
 
-def create_xlsx(headers: list[str], rows: list[list[object]]) -> bytes:
+def create_xlsx(
+    headers: list[str],
+    rows: list[list[object]],
+    *,
+    company_identity: str = "HADIR",
+    report_title: str = "HADIR Report",
+    locale: str = "en",
+) -> bytes:
     workbook = Workbook(write_only=True)
     worksheet = workbook.create_sheet("HADIR Report")
+    worksheet.append([safe_spreadsheet_value(company_identity)])
+    worksheet.append([safe_spreadsheet_value(report_title)])
+    worksheet.append(["تاريخ إنشاء الملف" if locale == "ar" else "File generated", datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")])
     worksheet.append(headers)
     for row in rows:
         worksheet.append([safe_spreadsheet_value(value) for value in row])
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def create_combined_xlsx(
+    sections: list[tuple[str, list[str], list[list[object]]]],
+    *,
+    company_identity: str = "HADIR",
+    locale: str = "en",
+) -> bytes:
+    workbook = Workbook(write_only=True)
+    for index, (title, headers, rows) in enumerate(sections, start=1):
+        worksheet = workbook.create_sheet(f"{index} - {title}"[:31])
+        worksheet.append([safe_spreadsheet_value(company_identity)])
+        worksheet.append([title])
+        worksheet.append(["تاريخ إنشاء الملف" if locale == "ar" else "File generated", datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")])
+        worksheet.append(headers)
+        for row in rows:
+            worksheet.append([safe_spreadsheet_value(value) for value in row])
     buffer = BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
@@ -1210,27 +1463,330 @@ def safe_spreadsheet_value(value: object) -> object:
     return normalized
 
 
-def create_pdf(title: str, headers: list[str], rows: list[list[object]]) -> bytes:
+def _pdf_font(locale: str) -> str:
+    """Return a font that can display the selected report language."""
+    if locale != "ar":
+        return "Helvetica"
+    candidates = (
+        "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        r"C:\Windows\Fonts\tahoma.ttf",
+        r"C:\Windows\Fonts\arial.ttf",
+    )
+    for font_path in candidates:
+        path = Path(font_path)
+        if path.exists():
+            try:
+                pdfmetrics.registerFont(TTFont("HadirArabic", str(path)))
+                return "HadirArabic"
+            except Exception:
+                continue
+    return "Helvetica"
+
+
+def _pdf_text(value: object, locale: str) -> str:
+    text = str(value if value is not None else "—")
+    if locale == "ar" and arabic_reshaper is not None and bidi_display is not None:
+        try:
+            return bidi_display(arabic_reshaper.reshape(text))
+        except Exception:
+            pass
+    return text
+
+
+def _pdf_paragraph(value: object, style: ParagraphStyle, locale: str) -> Paragraph:
+    return Paragraph(escape(_pdf_text(value, locale)).replace("\n", "<br/>") , style)
+
+
+def _report_period(date_from: date | None, date_to: date | None, locale: str) -> str:
+    if date_from and date_to:
+        return (
+            f"من {date_from:%Y-%m-%d} إلى {date_to:%Y-%m-%d}"
+            if locale == "ar"
+            else f"{date_from:%Y-%m-%d} to {date_to:%Y-%m-%d}"
+        )
+    if date_from:
+        return f"من {date_from:%Y-%m-%d}" if locale == "ar" else f"From {date_from:%Y-%m-%d}"
+    if date_to:
+        return f"حتى {date_to:%Y-%m-%d}" if locale == "ar" else f"Through {date_to:%Y-%m-%d}"
+    return "كل التواريخ" if locale == "ar" else "All dates"
+
+
+def _pdf_logo(company_logo: bytes | None) -> Image | None:
+    """Build a proportional logo flowable, ignoring corrupt/unsupported uploads."""
+    if not company_logo:
+        return None
+    try:
+        reader = ImageReader(BytesIO(company_logo))
+        width, height = reader.getSize()
+        if not width or not height:
+            return None
+        max_width = 30 * mm
+        max_height = 22 * mm
+        scale = min(max_width / width, max_height / height)
+        logo = Image(BytesIO(company_logo), width=width * scale, height=height * scale)
+        logo.hAlign = "CENTER"
+        return logo
+    except Exception:
+        return None
+
+
+def create_pdf(
+    title: str,
+    headers: list[str],
+    rows: list[list[object]],
+    *,
+    company_name: str,
+    company_registration_number: str | None,
+    company_unified_number: str | None,
+    company_contact_phone: str | None = None,
+    company_tax_number: str | None = None,
+    company_logo: bytes | None = None,
+    company_timezone: str,
+    date_from: date | None,
+    date_to: date | None,
+    locale: str,
+    sections: list[tuple[str, list[str], list[list[object]]]] | None = None,
+) -> bytes:
+    """Create a client-facing report instead of a raw pipe-delimited dump."""
     buffer = BytesIO()
-    document = canvas.Canvas(buffer, pagesize=landscape(A4))
-    width, height = landscape(A4)
-    y = height - 36
-    document.setTitle(title)
-    document.setFont("Helvetica-Bold", 14)
-    document.drawString(30, y, title)
-    y -= 24
-    document.setFont("Helvetica-Bold", 7)
-    document.drawString(30, y, " | ".join(headers)[:180])
-    y -= 14
-    document.setFont("Helvetica", 7)
-    for row in rows:
-        if y < 30:
-            document.showPage()
-            y = height - 36
-            document.setFont("Helvetica", 7)
-        document.drawString(30, y, " | ".join(str(value) for value in row)[:190])
-        y -= 11
-    document.save()
+    page_width, _ = landscape(A4)
+    font_name = _pdf_font(locale)
+    direction_alignment = TA_CENTER
+    title_style = ParagraphStyle(
+        "HadirReportTitle",
+        fontName=font_name,
+        fontSize=16,
+        leading=20,
+        alignment=direction_alignment,
+        textColor=colors.HexColor("#075f59"),
+        spaceAfter=3 * mm,
+    )
+    company_style = ParagraphStyle(
+        "HadirReportCompany",
+        fontName=font_name,
+        fontSize=10,
+        leading=13,
+        alignment=direction_alignment,
+        textColor=colors.HexColor("#344e4b"),
+        spaceAfter=5 * mm,
+    )
+    company_corner_style = ParagraphStyle(
+        "HadirReportCompanyCorner",
+        fontName=font_name,
+        fontSize=8.5,
+        leading=11,
+        alignment=TA_RIGHT if locale == "ar" else TA_LEFT,
+        textColor=colors.HexColor("#344e4b"),
+        spaceAfter=1.5 * mm,
+        wordWrap="CJK",
+    )
+    meta_label_style = ParagraphStyle(
+        "HadirReportMetaLabel",
+        fontName=font_name,
+        fontSize=7.5,
+        leading=10,
+        alignment=direction_alignment,
+        textColor=colors.HexColor("#4f6b68"),
+    )
+    meta_value_style = ParagraphStyle(
+        "HadirReportMetaValue",
+        fontName=font_name,
+        fontSize=8.5,
+        leading=11,
+        alignment=direction_alignment,
+        textColor=colors.HexColor("#173330"),
+    )
+    cell_style = ParagraphStyle(
+        "HadirReportCell",
+        fontName=font_name,
+        fontSize=7.2,
+        leading=9,
+        alignment=direction_alignment,
+        textColor=colors.HexColor("#173330"),
+        wordWrap="CJK",
+    )
+    header_style = ParagraphStyle(
+        "HadirReportHeader",
+        fontName=font_name,
+        fontSize=7.4,
+        leading=9,
+        alignment=direction_alignment,
+        textColor=colors.white,
+        wordWrap="CJK",
+    )
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        leftMargin=14 * mm,
+        rightMargin=14 * mm,
+        topMargin=16 * mm,
+        bottomMargin=17 * mm,
+        title=title,
+        author="HADIR",
+    )
+    generated_at = datetime.now(UTC)
+    try:
+        generated_local = generated_at.astimezone(ZoneInfo(company_timezone))
+    except (ValueError, TypeError):
+        generated_local = generated_at
+    generated_label = generated_local.strftime("%Y-%m-%d %H:%M")
+    period_label = _report_period(date_from, date_to, locale)
+    if locale == "ar":
+        period_name, generated_name, total_name = "فترة التقرير", "تاريخ إنشاء الملف", "عدد السجلات"
+    else:
+        period_name, generated_name, total_name = "Report period", "File generated", "Total records"
+
+    report_sections = sections or [(title, headers, rows)]
+    company_identity = company_name
+    identity_parts = []
+    if company_registration_number:
+        identity_parts.append(
+            f"{'السجل التجاري' if locale == 'ar' else 'CR'}: {company_registration_number}"
+        )
+    if company_unified_number:
+        identity_parts.append(
+            f"{'الرقم الموحد' if locale == 'ar' else 'Unified number'}: {company_unified_number}"
+        )
+    if identity_parts:
+        company_identity = f"{company_name} · {' · '.join(identity_parts)}"
+    header_details: list[str] = []
+    if company_contact_phone:
+        header_details.append(
+            f"{'الجوال' if locale == 'ar' else 'Phone'}: {company_contact_phone}"
+        )
+    if company_tax_number:
+        header_details.append(
+            f"{'الرقم الضريبي' if locale == 'ar' else 'Tax number'}: {company_tax_number}"
+        )
+    # Keep the report title centered while reserving the two physical corners
+    # for branding: the logo on the left and a readable company identity block
+    # on the right. This remains clear in both Arabic and English PDFs.
+    center_stack: list[object] = [_pdf_paragraph(title, title_style, locale)]
+    company_info_stack: list[object] = [
+        _pdf_paragraph(company_name, company_corner_style, locale),
+    ]
+    for identity_part in identity_parts:
+        company_info_stack.append(_pdf_paragraph(identity_part, company_corner_style, locale))
+    for detail in header_details:
+        company_info_stack.append(_pdf_paragraph(detail, company_corner_style, locale))
+    logo = _pdf_logo(company_logo)
+    available_width = page_width - 28 * mm
+    side_width = 42 * mm
+    info_width = 96 * mm
+    center_width = available_width - side_width - info_width
+    logo_cell: object = logo if logo is not None else Spacer(1, 22 * mm)
+    header = Table(
+        [[logo_cell, center_stack, company_info_stack]],
+        colWidths=[side_width, center_width, info_width],
+        hAlign="CENTER",
+    )
+    header.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#c8dedb")),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f5faf9")),
+        ("LINEAFTER", (0, 0), (1, 0), 0.25, colors.HexColor("#d7e8e5")),
+        ("LINEAFTER", (1, 0), (1, 0), 0.25, colors.HexColor("#d7e8e5")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story: list[object] = [header]
+    metadata = Table(
+        [[
+            _pdf_paragraph(period_name, meta_label_style, locale),
+            _pdf_paragraph(period_label, meta_value_style, locale),
+            _pdf_paragraph(generated_name, meta_label_style, locale),
+            _pdf_paragraph(generated_label, meta_value_style, locale),
+            _pdf_paragraph(total_name, meta_label_style, locale),
+            _pdf_paragraph(str(sum(len(section_rows) for _, _, section_rows in report_sections)), meta_value_style, locale),
+        ]],
+        colWidths=[24 * mm, 42 * mm, 25 * mm, 39 * mm, 25 * mm, 18 * mm],
+    )
+    metadata.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#edf6f4")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#c8dedb")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d7e8e5")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.extend([metadata, Spacer(1, 6 * mm)])
+    for section_index, (section_title, section_headers, section_rows) in enumerate(report_sections):
+        if len(report_sections) > 1:
+            story.append(_pdf_paragraph(section_title, company_style, locale))
+        if section_rows:
+            table_data = [[_pdf_paragraph(header, header_style, locale) for header in section_headers]]
+            table_data.extend([
+                [_pdf_paragraph(value, cell_style, locale) for value in row]
+                for row in section_rows
+            ])
+            available_width = page_width - 28 * mm
+            weights = [1.1 if len(section_headers) <= 7 else 1 for _ in section_headers]
+            if section_headers:
+                weights[0] = 1.25
+            total_weight = sum(weights) or 1
+            table = Table(
+                table_data,
+                repeatRows=1,
+                colWidths=[available_width * weight / total_weight for weight in weights],
+                hAlign="CENTER",
+            )
+            table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#075f59")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#c8dedb")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5faf9")]),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]))
+            story.append(table)
+        elif len(report_sections) == 1:
+            empty_label = "لا توجد سجلات ضمن الفترة المحددة." if locale == "ar" else "No records found for the selected period."
+            empty_style = ParagraphStyle(
+                "HadirReportEmpty",
+                parent=cell_style,
+                fontSize=11,
+                leading=15,
+                textColor=colors.HexColor("#4f6b68"),
+                spaceBefore=12 * mm,
+                spaceAfter=12 * mm,
+            )
+            story.append(_pdf_paragraph(empty_label, empty_style, locale))
+        if section_index < len(report_sections) - 1:
+            story.append(Spacer(1, 8 * mm))
+    if not report_sections:
+        empty_label = "لا توجد سجلات ضمن الفترة المحددة." if locale == "ar" else "No records found for the selected period."
+        empty_style = ParagraphStyle(
+            "HadirReportEmpty",
+            parent=cell_style,
+            fontSize=11,
+            leading=15,
+            textColor=colors.HexColor("#4f6b68"),
+            spaceBefore=12 * mm,
+            spaceAfter=12 * mm,
+        )
+        story.append(_pdf_paragraph(empty_label, empty_style, locale))
+
+    footer_title = _pdf_text(title, locale)
+    footer_company = _pdf_text(company_name, locale)
+
+    def draw_footer(canv, doc) -> None:
+        canv.saveState()
+        canv.setFont(font_name, 7)
+        canv.setFillColor(colors.HexColor("#5f7774"))
+        canv.drawString(14 * mm, 9 * mm, f"{footer_company} · {footer_title}")
+        page_label = f"{('صفحة' if locale == 'ar' else 'Page')} {doc.page}"
+        canv.drawRightString(page_width - 14 * mm, 9 * mm, _pdf_text(page_label, locale))
+        canv.restoreState()
+
+    document.build(story, onFirstPage=draw_footer, onLaterPages=draw_footer)
     return buffer.getvalue()
 
 
@@ -1267,11 +1823,13 @@ async def create_export(
             title="Report exports are unavailable",
             detail="The current subscription does not include report exports.",
         )
+    report_types = list(dict.fromkeys([payload.report_type, *payload.report_types]))
     filters = payload.model_dump(mode="json", exclude={"report_type", "export_format"})
+    filters["report_types"] = report_types
     job = ExportJob(
         company_id=context.company_id,
         requested_by_membership_id=context.membership.id,
-        report_type=payload.report_type,
+        report_type=payload.report_type if len(report_types) == 1 else "bundle",
         export_format=payload.export_format,
         filters=filters,
         status="processing",
@@ -1289,24 +1847,94 @@ async def create_export(
             group_id=payload.group_id,
         )
         scopes = await membership_scopes(session, context)
-        headers, rows = await export_rows(
-            session,
-            context.company_id,
-            payload,
-            visible,
-            None if scopes.unrestricted else scopes.branch_ids,
-        )
+        display_maps = await report_display_maps(session, context.company_id)
+        company_logo: bytes | None = None
+        if context.company.logo_file_id is not None:
+            logo_file = await session.scalar(
+                select(StoredFile).where(
+                    StoredFile.company_id == context.company_id,
+                    StoredFile.id == context.company.logo_file_id,
+                )
+            )
+            if logo_file is not None and logo_file.content_type.startswith("image/"):
+                company_logo = logo_file.content
+        sections: list[tuple[str, list[str], list[list[object]]]] = []
+        for report_type in report_types:
+            section_payload = payload.model_copy(update={"report_type": report_type})
+            section_headers, section_rows = await export_rows(
+                session,
+                context.company_id,
+                section_payload,
+                visible,
+                None if scopes.unrestricted else scopes.branch_ids,
+                display_maps,
+            )
+            sections.append((REPORT_TITLES[payload.locale][report_type], section_headers, section_rows))
         job.progress_percent = 60
+        company_identity = context.company.display_name
+        if context.company.commercial_registration_number:
+            company_identity += f" · {'السجل التجاري' if payload.locale == 'ar' else 'CR'}: {context.company.commercial_registration_number}"
+        if context.company.unified_number:
+            company_identity += f" · {'الرقم الموحد' if payload.locale == 'ar' else 'Unified number'}: {context.company.unified_number}"
+        if context.company.contact_phone:
+            company_identity += f" · {'الجوال' if payload.locale == 'ar' else 'Phone'}: {context.company.contact_phone}"
+        if context.company.tax_number:
+            company_identity += f" · {'الرقم الضريبي' if payload.locale == 'ar' else 'Tax number'}: {context.company.tax_number}"
         if payload.export_format == "xlsx":
-            job.file_content = create_xlsx(headers, rows)
+            job.file_content = (
+                create_xlsx(
+                    *sections[0][1:],
+                    company_identity=company_identity,
+                    report_title=sections[0][0],
+                    locale=payload.locale,
+                )
+                if len(sections) == 1
+                else create_combined_xlsx(
+                    sections,
+                    company_identity=company_identity,
+                    locale=payload.locale,
+                )
+            )
             job.content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         else:
             job.file_content = create_pdf(
-                f"HADIR {payload.report_type.title()} Report", headers, rows
+                "تقرير مجمع" if len(sections) > 1 and payload.locale == "ar" else "Combined report" if len(sections) > 1 else sections[0][0],
+                sections[0][1],
+                sections[0][2],
+                company_name=context.company.display_name,
+                company_registration_number=context.company.commercial_registration_number,
+                company_unified_number=context.company.unified_number,
+                company_contact_phone=context.company.contact_phone,
+                company_tax_number=context.company.tax_number,
+                company_logo=company_logo,
+                company_timezone=context.company.timezone,
+                date_from=payload.date_from,
+                date_to=payload.date_to,
+                locale=payload.locale,
+                sections=sections if len(sections) > 1 else None,
             )
             job.content_type = "application/pdf"
         timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-        job.filename = f"hadir-{payload.report_type}-{timestamp}.{payload.export_format}"
+        arabic_filename_slugs = {
+            "attendance": "الحضور-والانصراف",
+            "geofence_exits": "مغادرة-النطاق",
+            "leave": "الإجازات",
+            "permissions": "الاستئذانات",
+            "tasks": "المهام",
+            "documents": "وثائق-الموظفين",
+            "branches": "الفروع",
+            "shifts": "الورديات",
+        }
+        filename_title = (
+            "تقرير-مجمع"
+            if len(report_types) > 1 and payload.locale == "ar"
+            else "hadir-combined-report"
+            if len(report_types) > 1
+            else arabic_filename_slugs[payload.report_type]
+            if payload.locale == "ar"
+            else f"hadir-{payload.report_type}"
+        )
+        job.filename = f"{filename_title}-{timestamp}.{payload.export_format}"
         job.status = "completed"
         job.progress_percent = 100
         job.completed_at = datetime.now(UTC)
@@ -1391,5 +2019,10 @@ async def download_export(
     return Response(
         content=job.file_content,
         media_type=job.content_type,
-        headers={"Content-Disposition": f'attachment; filename="{job.filename}"'},
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="hadir-report.{job.export_format}"; '
+                f"filename*=UTF-8''{quote(job.filename)}"
+            )
+        },
     )

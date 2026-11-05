@@ -1,18 +1,27 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { WhatsAppContact } from "@/components/whatsapp-contact";
 
 import { authorizedApiFetch, getWebSession } from "@/lib/auth/server-session";
 import { canEnterCompanyPortal, type PortalRole } from "@/lib/auth/permissions";
 
-import { archiveBranchAction, archiveShiftAction, logoutAction } from "./actions";
+import {
+  archiveBranchAction,
+  archiveShiftAction,
+  bulkArchiveBranchesAction,
+  bulkArchiveShiftsAction,
+  bulkDeactivateEmployeesAction,
+  logoutAction,
+} from "./actions";
 import { BranchAssignmentForm, type BranchAssignment } from "./branch-assignment-form";
 import { BranchForm } from "./branch-form";
 import { BranchEditForm, type EditableBranch } from "./branch-edit-form";
 import { CompanySettingsForm, type CompanySettings } from "./company-settings-form";
 import { EmployeeForm, type EditableEmployee } from "./employee-form";
-import { InvitationForm } from "./invitation-form";
+import { InvitationCodeAction, InvitationForm } from "./invitation-form";
 import { GroupManagement, type EditableGroup } from "./group-management";
 import { MemberAccessForm, type MemberAccess } from "./member-access-form";
+import { ReportsDashboard } from "./reports-dashboard";
 import {
   markAllNotificationsReadAction,
   reviewGeofenceExitAction,
@@ -20,7 +29,9 @@ import {
 } from "./operations-actions";
 import { OperationsDashboard, type ReportFilters } from "./operations-dashboard";
 import { ShiftAssignmentForm, type ShiftAssignment } from "./shift-assignment-form";
+import { ShiftEditForm, type EditableShift } from "./shift-edit-form";
 import { ShiftForm } from "./shift-form";
+import { statusLabel } from "./display-labels";
 
 type Invitation = {
   id: string;
@@ -32,7 +43,7 @@ type Invitation = {
 
 type Branch = EditableBranch;
 
-type Shift = {
+type Shift = EditableShift & {
   id: string;
   code: string;
   name: string;
@@ -42,6 +53,13 @@ type Shift = {
   working_days: number[];
   grace_period_minutes: number;
   break_duration_minutes: number;
+  effective_from: string;
+  effective_to: string | null;
+  recurrence: {
+    location_policy?: string;
+    periods?: { start_time?: string; end_time?: string }[];
+  };
+  is_active: boolean;
   version: number;
 };
 
@@ -83,7 +101,7 @@ type NotificationPreferences = {
   quiet_hours_start: string | null;
   quiet_hours_end: string | null;
 };
-type CompanyTab = "employees" | "branches" | "shifts" | "groups" | "operations" | "notifications" | "geofence" | "admin";
+type CompanyTab = "employees" | "branches" | "shifts" | "groups" | "operations" | "reports" | "notifications" | "geofence" | "admin";
 
 export default async function CompanyPortal({
   params,
@@ -125,6 +143,7 @@ export default async function CompanyPortal({
   const canManageSettings = roles.includes("OWNER");
   const canManageGroups = sessionPermissions.includes("departments:manage");
   const canManageBranches = sessionPermissions.includes("branches:manage");
+  const canViewReports = canManage || sessionPermissions.includes("reports:view");
   const canReviewGeofence = sessionPermissions.includes("geofence_exits:manage");
   const [
     invitationResponse,
@@ -141,6 +160,8 @@ export default async function CompanyPortal({
     notificationPreferencesResponse,
     branchSupervisorsResponse,
     shiftAssignmentsResponse,
+    taskRecipientsResponse,
+    platformDashboardResponse,
   ] = await Promise.all([
     canManage ? authorizedApiFetch("/invitations") : Promise.resolve(null),
     authorizedApiFetch("/employees?page_size=100"),
@@ -162,6 +183,8 @@ export default async function CompanyPortal({
       ? authorizedApiFetch("/branches/management/supervisors")
       : Promise.resolve(null),
     canEditEmployees ? authorizedApiFetch("/shifts/assignments") : Promise.resolve(null),
+    authorizedApiFetch("/tasks/recipients"),
+    canManageSettings ? authorizedApiFetch("/platform/dashboard") : Promise.resolve(null),
   ]);
   const invitationPayload: { items: Invitation[] } = invitationResponse?.ok
     ? ((await invitationResponse.json()) as { items: Invitation[] })
@@ -193,6 +216,55 @@ export default async function CompanyPortal({
   const geofenceEvents: GeofenceExit[] = geofenceResponse?.ok
     ? ((await geofenceResponse.json()) as GeofenceExit[])
     : [];
+  const employeeNameById = new Map(employeePayload.items.map((item) => [item.membership_id, item.display_name]));
+  const branchNameById = new Map(branchPayload.items.map((item) => [item.id, item.name]));
+  const geofenceStatusLabel = (value: string) =>
+    ar
+      ? ({
+          unauthorized: "مغادرة غير مصرح بها",
+          confirmed_unauthorized: "مغادرة غير مصرح بها مؤكدة",
+          approved_exception: "استثناء معتمد",
+          dismissed: "مستبعدة",
+          reconfirmed: "عاد إلى النطاق",
+          observing: "تحت المراقبة",
+        }[value] ?? statusLabel(value, true))
+      : value.replaceAll("_", " ");
+  const notificationTitle = (item: Notification) => {
+    if (!ar) return item.title;
+    return ({
+      permission_requested: "طلب استئذان جديد",
+      permission_approved: "تم اعتماد طلب الاستئذان",
+      permission_rejected: "تم رفض طلب الاستئذان",
+      leave_requested: "طلب إجازة جديد",
+      leave_reviewed: "تمت مراجعة طلب الإجازة",
+      geofence_exit_unauthorized: "مغادرة غير مصرح بها من النطاق",
+      task_created: `مهمة جديدة: ${item.title}`,
+      task_comment_added: `رسالة جديدة على المهمة: ${item.title}`,
+      task_status_changed: `تحديث حالة المهمة: ${item.title}`,
+      device_change_requested: "طلب تغيير جهاز جديد",
+      missing_checkout: "تم إغلاق الوردية دون تسجيل الانصراف",
+      attendance_reminder: "تذكير بإثبات الحضور",
+      attendance_absent: "تم تسجيل الغياب",
+    } as Record<string, string>)[item.kind] ?? item.title;
+  };
+  const notificationBody = (item: Notification) => {
+    if (!ar) return item.body;
+    return ({
+      permission_requested: "أرسل أحد الموظفين طلب استئذان أو خروج مبكر للمراجعة.",
+      permission_approved: "تمت الموافقة على طلب الاستئذان.",
+      permission_rejected: "تم رفض طلب الاستئذان.",
+      leave_requested: "أرسل أحد الموظفين طلب إجازة للمراجعة.",
+      leave_reviewed: "تم تحديث حالة طلب الإجازة.",
+      geofence_exit_unauthorized: "بقي موظف خارج نطاق الفرع دون استئذان معتمد.",
+      task_created: "تم إسناد مهمة جديدة إليك.",
+      task_comment_added: "أضاف أحد المشاركين رسالة جديدة إلى المهمة.",
+      task_status_changed: "تم تحديث حالة المهمة.",
+      device_change_requested: "طلب موظف اعتماد هاتف بديل للمراجعة.",
+      missing_checkout: "انتهت الوردية دون تسجيل الانصراف، فأُغلقت تلقائياً بعد المهلة.",
+      attendance_reminder: "لم يثبت الموظف حضوره بعد انتهاء فترة السماح.",
+      attendance_absent: "انتهت الوردية دون تسجيل حضور، لذلك أُغلق اليوم كسجل غياب.",
+    } as Record<string, string>)[item.kind] ?? item.body;
+  };
   const notifications: Notification[] = notificationsResponse.ok
     ? ((await notificationsResponse.json()) as Notification[])
     : [];
@@ -212,6 +284,9 @@ export default async function CompanyPortal({
   const shiftAssignments: ShiftAssignment[] = shiftAssignmentsResponse?.ok
     ? ((await shiftAssignmentsResponse.json()) as ShiftAssignment[])
     : [];
+  const taskRecipients: NamedOption[] = taskRecipientsResponse.ok
+    ? ((await taskRecipientsResponse.json()) as NamedOption[])
+    : [];
   const accessByMember = new Map(accessItems.map((item) => [item.membership_id, item]));
   const rolesFor = (employee: EditableEmployee) =>
     new Set([employee.role_code, ...(accessByMember.get(employee.membership_id)?.role_codes ?? [])]);
@@ -224,6 +299,9 @@ export default async function CompanyPortal({
   const supervisorOptions = employeePayload.items
     .filter((employee) => employee.membership_status === "active" && rolesFor(employee).has("SUPERVISOR"))
     .map((employee) => ({ id: employee.membership_id, name: employee.display_name }));
+  const deletableEmployees = employeePayload.items.filter(
+    (employee) => employee.role_code !== "OWNER" && employee.membership_status !== "inactive",
+  );
   const supervisorsByBranch = new Map(
     branchSupervisorAssignments.map((assignment) => [assignment.branch_id, assignment]),
   );
@@ -255,6 +333,13 @@ export default async function CompanyPortal({
       label: ar ? "العمليات" : "Operations",
       description: ar ? "حضور ومهام" : "Attendance and work",
     },
+    ...(canViewReports
+      ? [{
+          key: "reports" as const,
+          label: ar ? "التقارير" : "Reports",
+          description: ar ? "PDF و Excel" : "PDF and Excel",
+        }]
+      : []),
     {
       key: "notifications",
       label: ar ? "الإشعارات" : "Notifications",
@@ -279,7 +364,7 @@ export default async function CompanyPortal({
     ? requestedTab as CompanyTab
     : "employees";
   const assignmentEntries =
-    activeTab === "branches" && canEditEmployees
+    (activeTab === "branches" || activeTab === "employees") && canEditEmployees
       ? await Promise.all(
           employeePayload.items
             .filter((employee) => employee.role_code !== "OWNER")
@@ -293,20 +378,41 @@ export default async function CompanyPortal({
         )
       : [];
   const assignmentsByMember = Object.fromEntries(assignmentEntries);
+  const currentShiftByMember = new Map(
+    shiftAssignments
+      .filter((assignment) => assignment.membership_id && assignment.effective_to === null)
+      .map((assignment) => [assignment.membership_id!, assignment]),
+  );
   const signOut = logoutAction.bind(null, lang);
+  const otherLang = ar ? "en" : "ar";
+  const isPlatformAdmin = platformDashboardResponse?.ok === true;
 
   return (
     <main className="portal-shell">
       <section className="portal-card wide">
         <header className="portal-header">
           <div>
-            <p className="foundation-eyebrow">HADIR | حاضر</p>
+            <p className="foundation-eyebrow">DawamTech | دوام تك</p>
             <h1>{session.company.display_name}</h1>
             <p>{session.user.full_name} · {session.roles.join(", ")}</p>
           </div>
           <form action={signOut}>
             <button type="submit">{ar ? "تسجيل الخروج" : "Sign out"}</button>
           </form>
+          <div className="portal-header-links">
+            <WhatsAppContact lang={lang} />
+            <Link className="language-link secondary" href={`/${lang}/subscription`}>
+              {ar ? "الاشتراكات" : "Subscriptions"}
+            </Link>
+            {isPlatformAdmin && (
+              <Link className="language-link" href={`/${lang}/platform`}>
+                {ar ? "لوحة مالك التطبيق" : "Platform owner"}
+              </Link>
+            )}
+          </div>
+          <Link className="language-link" href={`/${otherLang}/company?tab=${activeTab}`}>
+            {ar ? "English" : "العربية"}
+          </Link>
         </header>
         <nav className="portal-tabs" aria-label={ar ? "أقسام الشركة" : "Company sections"}>
           {tabs.map((tab) => (
@@ -327,23 +433,47 @@ export default async function CompanyPortal({
           {employeePayload.items.length === 0 ? (
             <p>{ar ? "لا توجد ملفات موظفين." : "No employee profiles found."}</p>
           ) : canEditEmployees ? (
-            <div className="employee-list">
-              {employeePayload.items.map((employee) => (
-                <div key={employee.membership_id}>
-                  <EmployeeForm employee={employee} locale={lang} />
-                  {canManageSettings && employee.role_code !== "OWNER" && accessByMember.has(employee.membership_id) && (
-                    <MemberAccessForm
+            <>
+              {deletableEmployees.length > 0 && (
+                <form action={bulkDeactivateEmployeesAction.bind(null, lang)} className="bulk-delete-panel">
+                  <strong>{ar ? "حذف جماعي للموظفين" : "Bulk delete employees"}</strong>
+                  <p>{ar ? "يتم تعطيل العضوية وسحب الأجهزة والجلسات، مع بقاء السجلات التاريخية." : "This deactivates memberships and revokes devices/sessions while preserving history."}</p>
+                  <div className="bulk-delete-grid">
+                    {deletableEmployees.map((employee) => (
+                      <label key={employee.membership_id}>
+                        <input name="targets" type="checkbox" value={`${employee.membership_id}:${employee.membership_version}`} />
+                        <span>{employee.display_name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <button type="submit" className="danger-button">{ar ? "حذف المحدد" : "Delete selected"}</button>
+                </form>
+              )}
+              <div className="employee-list">
+                {employeePayload.items.map((employee) => (
+                  <div key={employee.membership_id}>
+                    <EmployeeForm
+                      employee={employee}
                       locale={lang}
-                      member={accessByMember.get(employee.membership_id)!}
-                      permissions={permissions}
                       branches={branchPayload.items}
-                      departments={departmentPayload.items}
-                      groups={groupPayload.items}
+                      shifts={shiftPayload.items}
+                      currentBranchAssignment={(assignmentsByMember[employee.membership_id] ?? []).find((assignment) => assignment.effective_to === null) ?? null}
+                      currentShiftAssignment={currentShiftByMember.get(employee.membership_id) ?? null}
                     />
-                  )}
-                </div>
-              ))}
-            </div>
+                    {canManageSettings && employee.role_code !== "OWNER" && accessByMember.has(employee.membership_id) && (
+                      <MemberAccessForm
+                        locale={lang}
+                        member={accessByMember.get(employee.membership_id)!}
+                        permissions={permissions}
+                        branches={branchPayload.items}
+                        departments={departmentPayload.items}
+                        groups={groupPayload.items}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
           ) : (
             <ul className="invitation-list">
               {employeePayload.items.map((employee) => (
@@ -371,28 +501,45 @@ export default async function CompanyPortal({
           {branchPayload.items.length === 0 ? (
             <p>{ar ? "لا توجد فروع نشطة." : "No active branches."}</p>
           ) : (
-            <ul className="branch-list">
-              {branchPayload.items.map((branch) => {
-                const archive = archiveBranchAction.bind(null, lang, branch.id, branch.version);
-                return (
-                  <li key={branch.id}>
-                    <div><strong>{branch.name}</strong><span>{branch.code} · {branch.saudi_short_address || branch.full_address}</span></div>
-                    <span>{branch.latitude}, {branch.longitude} · {branch.geofence_radius_m}m</span>
-                    {canManageBranches && (
-                      <BranchEditForm
-                        locale={lang}
-                        branch={branch}
-                        managerOptions={managerOptions}
-                        supervisorOptions={supervisorOptions}
-                        supervisorIds={supervisorsByBranch.get(branch.id)?.membership_ids ?? []}
-                        supervisorVersion={supervisorsByBranch.get(branch.id)?.version ?? branch.version}
-                      />
-                    )}
-                    {canEditEmployees && <form action={archive}><button className="danger-button" type="submit">{ar ? "أرشفة" : "Archive"}</button></form>}
-                  </li>
-                );
-              })}
-            </ul>
+            <>
+              {canEditEmployees && (
+                <form action={bulkArchiveBranchesAction.bind(null, lang)} className="bulk-delete-panel">
+                  <strong>{ar ? "حذف جماعي للفروع" : "Bulk delete branches"}</strong>
+                  <p>{ar ? "يتم أرشفة الفروع المحددة وإخفاؤها من القوائم النشطة." : "Selected branches are archived and removed from active lists."}</p>
+                  <div className="bulk-delete-grid">
+                    {branchPayload.items.map((branch) => (
+                      <label key={branch.id}>
+                        <input name="targets" type="checkbox" value={`${branch.id}:${branch.version}`} />
+                        <span>{branch.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <button type="submit" className="danger-button">{ar ? "حذف المحدد" : "Delete selected"}</button>
+                </form>
+              )}
+              <ul className="branch-list">
+                {branchPayload.items.map((branch) => {
+                  const archive = archiveBranchAction.bind(null, lang, branch.id, branch.version);
+                  return (
+                    <li key={branch.id}>
+                      <div><strong>{branch.name}</strong><span>{branch.code} · {branch.saudi_short_address || branch.full_address}</span></div>
+                      <span>{branch.latitude}, {branch.longitude} · {branch.geofence_radius_m}m</span>
+                      {canManageBranches && (
+                        <BranchEditForm
+                          locale={lang}
+                          branch={branch}
+                          managerOptions={managerOptions}
+                          supervisorOptions={supervisorOptions}
+                          supervisorIds={supervisorsByBranch.get(branch.id)?.membership_ids ?? []}
+                          supervisorVersion={supervisorsByBranch.get(branch.id)?.version ?? branch.version}
+                        />
+                      )}
+                      {canEditEmployees && <form action={archive}><button className="danger-button" type="submit">{ar ? "حذف" : "Delete"}</button></form>}
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
         </section>}
         {activeTab === "shifts" && <section className="portal-section">
@@ -411,18 +558,48 @@ export default async function CompanyPortal({
           {shiftPayload.items.length === 0 ? (
             <p>{ar ? "لا توجد ورديات نشطة." : "No active shifts."}</p>
           ) : (
-            <ul className="branch-list">
-              {shiftPayload.items.map((shift) => {
-                const archive = archiveShiftAction.bind(null, lang, shift.id, shift.version);
-                return (
-                  <li key={shift.id}>
-                    <div><strong>{shift.name}</strong><span>{shift.code} · {shift.start_time.slice(0, 5)}–{shift.end_time.slice(0, 5)}</span></div>
-                    <span>{shift.is_overnight ? (ar ? "ليلية" : "Overnight") : (ar ? "نهارية" : "Same day")} · {shift.working_days.length} {ar ? "أيام" : "days"}</span>
-                    {canEditEmployees && <form action={archive}><button className="danger-button" type="submit">{ar ? "أرشفة" : "Archive"}</button></form>}
-                  </li>
-                );
-              })}
-            </ul>
+            <>
+              {canEditEmployees && (
+                <form action={bulkArchiveShiftsAction.bind(null, lang)} className="bulk-delete-panel">
+                  <strong>{ar ? "حذف جماعي للورديات" : "Bulk delete shifts"}</strong>
+                  <p>{ar ? "يتم أرشفة الورديات المحددة وإيقاف استخدامها في التعيينات الجديدة." : "Selected shifts are archived and stopped for new active use."}</p>
+                  <div className="bulk-delete-grid">
+                    {shiftPayload.items.map((shift) => (
+                      <label key={shift.id}>
+                        <input name="targets" type="checkbox" value={`${shift.id}:${shift.version}`} />
+                        <span>{shift.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <button type="submit" className="danger-button">{ar ? "حذف المحدد" : "Delete selected"}</button>
+                </form>
+              )}
+              <ul className="branch-list">
+                {shiftPayload.items.map((shift) => {
+                  const archive = archiveShiftAction.bind(null, lang, shift.id, shift.version);
+                  const periods = shift.recurrence?.periods ?? [];
+                  const secondPeriod = periods[1];
+                  const locationless = shift.recurrence?.location_policy === "location_not_required";
+                  return (
+                    <li key={shift.id}>
+                      <div>
+                        <strong>{shift.name}</strong>
+                        <span>
+                          {shift.code} · {shift.start_time.slice(0, 5)}–{shift.end_time.slice(0, 5)}
+                          {secondPeriod?.start_time && secondPeriod?.end_time ? ` · ${secondPeriod.start_time.slice(0, 5)}–${secondPeriod.end_time.slice(0, 5)}` : ""}
+                        </span>
+                      </div>
+                      <span>
+                        {shift.is_overnight ? (ar ? "ليلية" : "Overnight") : (ar ? "نهارية" : "Same day")} · {shift.working_days.length} {ar ? "أيام" : "days"}
+                        {locationless ? ` · ${ar ? "بدون شرط موقع" : "No location required"}` : ""}
+                      </span>
+                      {canEditEmployees && <ShiftEditForm locale={lang} shift={shift} />}
+                      {canEditEmployees && <form action={archive}><button className="danger-button" type="submit">{ar ? "حذف" : "Delete"}</button></form>}
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
         </section>}
         {activeTab === "groups" && canManageGroups && (
@@ -436,8 +613,17 @@ export default async function CompanyPortal({
           locale={lang}
           canManage={canManage}
           employees={employeePayload.items}
+          taskRecipients={taskRecipients}
           branches={branchPayload.items}
           shifts={shiftPayload.items}
+          departments={departmentPayload.items}
+          groups={groupPayload.items}
+          reportFilters={reportFilters}
+        />}
+        {activeTab === "reports" && canViewReports && <ReportsDashboard
+          locale={lang}
+          employees={employeePayload.items}
+          branches={branchPayload.items}
           departments={departmentPayload.items}
           groups={groupPayload.items}
           reportFilters={reportFilters}
@@ -472,8 +658,8 @@ export default async function CompanyPortal({
             <ul className="invitation-list">
               {notifications.map((item) => (
                 <li key={item.id}>
-                  <strong>{item.urgent ? "! " : ""}{item.title}</strong>
-                  <span>{item.body}</span>
+                  <strong>{item.urgent ? "! " : ""}{notificationTitle(item)}</strong>
+                  <span>{notificationBody(item)}</span>
                   <span>{new Date(item.created_at).toLocaleString(lang)}</span>
                 </li>
               ))}
@@ -495,12 +681,15 @@ export default async function CompanyPortal({
                 {geofenceEvents.map((event) => (
                   <li key={event.id}>
                     <div>
-                      <strong>{event.status}</strong>
+                      <strong>{geofenceStatusLabel(event.status)}</strong>
                       <span>
-                        {new Date(event.detected_at).toLocaleString(lang)} · {event.distance_m ?? "—"}m · {event.consecutive_outside_samples} samples
+                        {new Date(event.detected_at).toLocaleString(lang)} · {event.distance_m ?? "—"}{ar ? "م" : "m"} · {event.consecutive_outside_samples} {ar ? "قراءات" : "samples"}
                       </span>
                       <span>
-                        {ar ? "الموظف" : "Employee"}: {event.membership_id}
+                        {ar ? "الموظف" : "Employee"}: {employeeNameById.get(event.membership_id) ?? event.membership_id}
+                      </span>
+                      <span>
+                        {ar ? "الفرع" : "Branch"}: {branchNameById.get(event.branch_id) ?? event.branch_id}
                       </span>
                     </div>
                     {event.review_comment ? (
@@ -524,7 +713,11 @@ export default async function CompanyPortal({
                                 maxLength={2000}
                                 placeholder={ar ? "سبب القرار" : "Decision reason"}
                               />
-                              <button type="submit">{decision.replaceAll("_", " ")}</button>
+                              <button type="submit">{ar ? ({
+                                confirmed_unauthorized: "تأكيد المخالفة",
+                                dismissed: "استبعاد",
+                                approved_exception: "اعتماد استثناء",
+                              }[decision] ?? decision) : decision.replaceAll("_", " ")}</button>
                             </form>
                           );
                         })}
@@ -544,12 +737,13 @@ export default async function CompanyPortal({
             {invitationPayload.items.length === 0 ? (
               <p>{ar ? "لا توجد دعوات بعد." : "No invitations yet."}</p>
             ) : (
-              <ul className="invitation-list">
+              <ul className="invitation-list admin-invitation-list">
                 {invitationPayload.items.map((item) => (
                   <li key={item.id}>
                     <strong>{item.full_name}</strong>
                     <span>{item.email}</span>
                     <span>{item.role_code} · {item.status}</span>
+                    <InvitationCodeAction locale={lang} invitationId={item.id} status={item.status} />
                   </li>
                 ))}
               </ul>
@@ -561,6 +755,23 @@ export default async function CompanyPortal({
         {canManageSettings && settings && (
           <section className="portal-section">
             <h2>{ar ? "إعدادات الشركة" : "Company settings"}</h2>
+            <div className="company-identity-card" aria-label={ar ? "بيانات الشركة المحفوظة" : "Saved company identity"}>
+              <div className="company-identity-copy">
+                <strong>{settings.display_name}</strong>
+                <span>{ar ? "البيانات المحفوظة وتظهر في التقارير" : "Saved details used in reports"}</span>
+                <dl>
+                  {settings.commercial_registration_number && <><dt>{ar ? "السجل التجاري" : "Commercial registration"}</dt><dd>{settings.commercial_registration_number}</dd></>}
+                  {settings.unified_number && <><dt>{ar ? "الرقم الموحد" : "Unified number"}</dt><dd>{settings.unified_number}</dd></>}
+                  {settings.contact_phone && <><dt>{ar ? "جوال الشركة" : "Company phone"}</dt><dd>{settings.contact_phone}</dd></>}
+                  {settings.tax_number && <><dt>{ar ? "الرقم الضريبي" : "Tax number"}</dt><dd>{settings.tax_number}</dd></>}
+                </dl>
+              </div>
+              {settings.logo_file_id ? (
+                <img className="company-logo-preview company-logo-summary" src={`/api/files/${settings.logo_file_id}`} alt={ar ? "شعار الشركة" : "Company logo"} />
+              ) : (
+                <div className="company-logo-placeholder" aria-hidden="true">{ar ? "بدون شعار" : "No logo"}</div>
+              )}
+            </div>
             <CompanySettingsForm settings={settings} locale={lang} />
           </section>
         )}

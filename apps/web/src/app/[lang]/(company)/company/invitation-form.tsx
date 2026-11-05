@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 
-import { createInvitationAction, type InvitationState } from "./actions";
+import { createInvitationAction, resendInvitationCodeAction, type InvitationState } from "./actions";
 
 const initialState: InvitationState = { message: "" };
 
@@ -21,8 +21,39 @@ export function InvitationForm({ locale }: { locale: string }) {
         <option value="MANAGER">{ar ? "مدير" : "Manager"}</option>
       </select>
       <button type="submit" disabled={pending}>{pending ? (ar ? "جارٍ الإنشاء..." : "Creating...") : (ar ? "إنشاء دعوة" : "Create invitation")}</button>
-      <p className="form-error" aria-live="polite">{state.message}</p>
+      <p className={state.success ? "form-success" : "form-error"} aria-live="polite">{state.message}</p>
       {state.activationToken && <div className="activation-token"><strong>{ar ? "رمز التفعيل لمرة واحدة" : "One-time activation token"}</strong><code>{state.activationToken}</code></div>}
+    </form>
+  );
+}
+
+export function InvitationCodeAction({
+  locale,
+  invitationId,
+  status,
+}: {
+  locale: string;
+  invitationId: string;
+  status: string;
+}) {
+  const ar = locale === "ar";
+  const action = resendInvitationCodeAction.bind(null, locale, invitationId);
+  const [state, formAction, pending] = useActionState(action, initialState);
+  if (status !== "pending") {
+    return <span>{ar ? "لا يمكن إنشاء كود بعد قبول الدعوة" : "Code unavailable after acceptance"}</span>;
+  }
+  return (
+    <form action={formAction} className="invitation-code-action">
+      <button type="submit" disabled={pending}>
+        {pending ? (ar ? "جارٍ إنشاء الكود..." : "Generating code...") : (ar ? "إعادة إنشاء/نسخ الكود" : "Resend / copy code")}
+      </button>
+      <p className={state.success ? "form-success" : "form-error"} aria-live="polite">{state.message}</p>
+      {state.activationToken && (
+        <div className="activation-token compact">
+          <strong>{ar ? "كود الدعوة الجديد" : "New invitation code"}</strong>
+          <code>{state.activationToken}</code>
+        </div>
+      )}
     </form>
   );
 }

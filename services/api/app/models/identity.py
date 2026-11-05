@@ -42,10 +42,22 @@ class User(Base):
 
 class Company(Base):
     __tablename__ = "companies"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["id", "logo_file_id"],
+            ["stored_files.company_id", "stored_files.id"],
+            name="fk_companies_logo_file",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     technical_name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    commercial_registration_number: Mapped[str | None] = mapped_column(String(32))
+    unified_number: Mapped[str | None] = mapped_column(String(32))
+    contact_phone: Mapped[str | None] = mapped_column(String(32))
+    tax_number: Mapped[str | None] = mapped_column(String(32))
+    logo_file_id: Mapped[UUID | None] = mapped_column(nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
     default_locale: Mapped[str] = mapped_column(String(8), default="ar", nullable=False)
     timezone: Mapped[str] = mapped_column(

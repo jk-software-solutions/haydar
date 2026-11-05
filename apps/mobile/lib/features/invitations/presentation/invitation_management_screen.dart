@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
 import '../../auth/application/auth_controller.dart';
@@ -65,12 +66,32 @@ class _InvitationManagementScreenState
     return AppLocalizations.of(context).invitationLoadError;
   }
 
-  Future<void> _openCreateDialog() async {
-    final created = await showDialog<CreatedInvitation>(
-      context: context,
-      builder: (_) => const _CreateInvitationDialog(),
-    );
-    if (created == null || !mounted) return;
+  String _roleLabel(String roleCode, bool ar) => switch (roleCode) {
+    'EMPLOYEE' => ar ? 'موظف' : 'Employee',
+    'SUPERVISOR' => ar ? 'مشرف' : 'Supervisor',
+    'HR' || 'HR_OFFICER' => ar ? 'موارد بشرية' : 'HR officer',
+    'MANAGER' || 'COMPANY_MANAGER' => ar ? 'مدير' : 'Manager',
+    _ => ar ? 'عضو فريق' : 'Team member',
+  };
+
+  String _statusLabel(String status, bool ar) => switch (status) {
+    'pending' => ar ? 'قيد الانتظار' : 'Pending',
+    'accepted' || 'activated' => ar ? 'تم التفعيل' : 'Activated',
+    'expired' => ar ? 'منتهية' : 'Expired',
+    'revoked' => ar ? 'ملغاة' : 'Revoked',
+    _ => ar ? 'غير محددة' : 'Unknown',
+  };
+
+  String _expiryLabel(DateTime? expiresAt, bool ar) {
+    if (expiresAt == null) return '';
+    final date = MaterialLocalizations.of(
+      context,
+    ).formatMediumDate(expiresAt.toLocal());
+    return ar ? 'تنتهي في $date' : 'Expires $date';
+  }
+
+  Future<void> _showActivationToken(CreatedInvitation invitation) async {
+    final ar = Localizations.localeOf(context).languageCode == 'ar';
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
@@ -80,13 +101,27 @@ class _InvitationManagementScreenState
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Text(
-              AppLocalizations.of(context).activationTokenCreatedDescription,
+              ar
+                  ? 'انسخ هذا الكود وأرسله للموظف. تم إبطال أي كود قديم لهذه الدعوة.'
+                  : 'Copy this code and send it to the employee. Any old code for this invitation is now invalid.',
             ),
             const SizedBox(height: 12),
-            SelectableText(created.activationToken),
+            SelectableText(invitation.activationToken),
           ],
         ),
         actions: <Widget>[
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(
+                ClipboardData(text: invitation.activationToken),
+              );
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(ar ? 'تم نسخ الكود' : 'Code copied')),
+              );
+            },
+            child: Text(ar ? 'نسخ الكود' : 'Copy code'),
+          ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: Text(MaterialLocalizations.of(context).closeButtonLabel),
@@ -94,6 +129,31 @@ class _InvitationManagementScreenState
         ],
       ),
     );
+  }
+
+  Future<void> _resendCode(InvitationSummary invitation) async {
+    try {
+      final updated = await ref
+          .read(invitationApiProvider)
+          .resendCode(invitation.id);
+      if (!mounted) return;
+      await _showActivationToken(updated);
+      await _load();
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyError(error))));
+    }
+  }
+
+  Future<void> _openCreateDialog() async {
+    final created = await showDialog<CreatedInvitation>(
+      context: context,
+      builder: (_) => const _CreateInvitationDialog(),
+    );
+    if (created == null || !mounted) return;
+    await _showActivationToken(created);
     await _load();
   }
 
@@ -146,15 +206,32 @@ class _InvitationManagementScreenState
                   separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (context, index) {
                     final invitation = _items[index];
+                    final ar =
+                        Localizations.localeOf(context).languageCode == 'ar';
+                    final role = _roleLabel(invitation.roleCode, ar);
+                    final status = _statusLabel(invitation.status, ar);
+                    final expiry = _expiryLabel(invitation.expiresAt, ar);
                     return Card(
                       child: ListTile(
                         leading: const Icon(Icons.mail_outline_rounded),
                         title: Text(invitation.fullName),
                         subtitle: Text(
-                          '${invitation.email}\n${invitation.roleCode}',
+                          '${invitation.email}\n$role · $status${expiry.isEmpty ? '' : '\n$expiry'}',
                         ),
-                        isThreeLine: true,
-                        trailing: Chip(label: Text(invitation.status)),
+                        isThreeLine: expiry.isNotEmpty,
+                        trailing: invitation.status == 'pending'
+                            ? IconButton.filledTonal(
+                                tooltip:
+                                    Localizations.localeOf(
+                                          context,
+                                        ).languageCode ==
+                                        'ar'
+                                    ? 'إنشاء ونسخ كود جديد'
+                                    : 'Generate and copy a new code',
+                                onPressed: () => _resendCode(invitation),
+                                icon: const Icon(Icons.refresh_rounded),
+                              )
+                            : Chip(label: Text(status)),
                       ),
                     );
                   },

@@ -54,7 +54,10 @@ async def invite_employee(
 
 
 async def configure_attendance(
-    client: httpx.AsyncClient, owner: dict[str, Any], employee: dict[str, Any]
+    client: httpx.AsyncClient,
+    owner: dict[str, Any],
+    employee: dict[str, Any],
+    recurrence: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     today = date.today()
     branch_response = await client.post(
@@ -98,7 +101,7 @@ async def configure_attendance(
             "break_duration_minutes": 0,
             "effective_from": (today - timedelta(days=1)).isoformat(),
             "effective_to": (today + timedelta(days=30)).isoformat(),
-            "recurrence": {"frequency": "weekly"},
+            "recurrence": recurrence or {"frequency": "weekly"},
         },
     )
     assert shift_response.status_code == 201
@@ -115,6 +118,55 @@ async def configure_attendance(
     )
     assert shift_assignment.status_code == 201
     return branch, shift
+
+
+async def test_locationless_shift_allows_gps_outside_branch_geofence(
+    db_client: httpx.AsyncClient,
+) -> None:
+    owner = await register_company(db_client, "Locationless Ops", "locationless@example.com")
+    employee = await invite_employee(db_client, owner, "locationless-worker@example.com")
+    branch, _shift = await configure_attendance(
+        db_client,
+        owner,
+        employee,
+        recurrence={
+            "frequency": "weekly",
+            "location_policy": "location_not_required",
+            "periods": [{"start_time": "00:00:00", "end_time": "23:59:00"}],
+        },
+    )
+    installation_id = str(uuid4())
+    registration = await db_client.post(
+        "/api/v1/devices/register",
+        headers=auth_headers(employee),
+        json={
+            "installation_id": installation_id,
+            "platform": "android",
+            "device_name": "Remote attendance phone",
+        },
+    )
+    assert registration.status_code == 201
+
+    check_in = await db_client.post(
+        "/api/v1/attendance/check-in",
+        headers=auth_headers(employee, installation_id),
+        json={
+            "method": "gps",
+            "latitude": "21.543333",
+            "longitude": "39.172778",
+        },
+    )
+
+    assert branch["geofence_radius_m"] == 150
+    assert check_in.status_code == 201
+    assert check_in.json()["checked_in_at"] is not None
+    location_events = await db_client.get(
+        f"/api/v1/attendance/records/{check_in.json()['id']}/location-events",
+        headers=auth_headers(owner),
+    )
+    assert location_events.status_code == 200
+    assert location_events.json()[0]["method"] == "gps"
+    assert location_events.json()[0]["latitude"] == "21.543333"
 
 
 async def test_attendance_requires_approved_device_and_tracks_session(
@@ -333,6 +385,33 @@ async def test_attendance_requires_approved_device_and_tracks_session(
     assert duplicate.status_code == 409
     assert duplicate.json()["code"] == "qr_token_replayed"
 
+    early_check_out = await db_client.post(
+        "/api/v1/attendance/check-out",
+        headers=auth_headers(employee, installation_id),
+        json=action,
+    )
+    assert early_check_out.status_code == 409
+    assert early_check_out.json()["code"] == "checkout_too_early"
+
+    permission_start = datetime.now(UTC) - timedelta(minutes=1)
+    permission = await db_client.post(
+        "/api/v1/permission-requests",
+        headers=auth_headers(employee),
+        json={
+            "request_type": "one_hour",
+            "starts_at": permission_start.isoformat(),
+            "ends_at": (permission_start + timedelta(hours=1)).isoformat(),
+            "reason": "Approved early departure test",
+        },
+    )
+    assert permission.status_code == 201
+    permission_approval = await db_client.post(
+        f"/api/v1/permission-requests/{permission.json()['id']}/review",
+        headers=auth_headers(owner),
+        json={"decision": "approved", "comment": "Approved for test"},
+    )
+    assert permission_approval.status_code == 200
+
     check_out = await db_client.post(
         "/api/v1/attendance/check-out",
         headers={
@@ -548,12 +627,35 @@ async def test_tasks_leave_files_exports_and_tenant_isolation(
     employee_tasks = await db_client.get("/api/v1/tasks", headers=auth_headers(employee))
     assert employee_tasks.status_code == 200
     assert [item["id"] for item in employee_tasks.json()] == [task_id]
+    receipt_upload = await db_client.post(
+        "/api/v1/files",
+        headers=auth_headers(employee),
+        files={"upload": ("completion-receipt.txt", b"receipt from employee", "text/plain")},
+    )
+    assert receipt_upload.status_code == 201
+    receipt_file_id = receipt_upload.json()["id"]
     status_update = await db_client.post(
         f"/api/v1/tasks/{task_id}/status",
         headers=auth_headers(employee),
-        json={"version": 1, "status": "in_progress"},
+        json={
+            "version": 1,
+            "status": "in_progress",
+            "completion_attachment_file_id": receipt_file_id,
+        },
     )
     assert status_update.status_code == 200
+    owner_receipt = await db_client.get(
+        f"/api/v1/files/{receipt_file_id}", headers=auth_headers(owner)
+    )
+    assert owner_receipt.status_code == 200
+    assert owner_receipt.content == b"receipt from employee"
+    video_upload = await db_client.post(
+        "/api/v1/files",
+        headers=auth_headers(employee),
+        files={"upload": ("receipt.mp4", b"not a real video", "image/png")},
+    )
+    assert video_upload.status_code == 415
+    assert video_upload.json()["code"] == "video_upload_not_allowed"
     notifications = await db_client.get(
         "/api/v1/notifications?unread_only=true", headers=auth_headers(owner)
     )

@@ -42,12 +42,6 @@ class AttendanceRecord(Base):
             name="fk_attendance_records_company_shift",
         ),
         UniqueConstraint("company_id", "id", name="uq_attendance_records_company_id"),
-        UniqueConstraint(
-            "company_id",
-            "membership_id",
-            "work_date",
-            name="uq_attendance_records_member_date",
-        ),
         Index("ix_attendance_records_company_date", "company_id", "work_date"),
         Index(
             "uq_attendance_records_open_member",

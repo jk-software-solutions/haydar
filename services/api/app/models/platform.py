@@ -60,9 +60,42 @@ class CompanySubscription(Base):
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Optional per-company overrides let the platform owner sell a custom
+    # seat/branch/storage allowance without creating a one-off plan.
+    limits_override: Mapped[dict[str, object] | None] = mapped_column(JSON)
     activated_by_membership_id: Mapped[UUID | None]
     activation_note: Mapped[str | None] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class SubscriptionRequest(Base):
+    """A customer request awaiting manual payment/activation approval."""
+
+    __tablename__ = "subscription_requests"
+    __table_args__ = (
+        Index("ix_subscription_requests_company_status", "company_id", "status"),
+        Index("ix_subscription_requests_created", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    requested_by_membership_id: Mapped[UUID] = mapped_column(
+        ForeignKey("company_memberships.id"), nullable=False
+    )
+    plan_id: Mapped[UUID] = mapped_column(ForeignKey("subscription_plans.id"), nullable=False)
+    billing_cycle: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
+    coupon_code: Mapped[str | None] = mapped_column(String(64))
+    note: Mapped[str | None] = mapped_column(Text)
+    review_note: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    activated_subscription_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("company_subscriptions.id")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now

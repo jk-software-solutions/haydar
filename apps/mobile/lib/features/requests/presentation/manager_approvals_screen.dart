@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,14 +19,82 @@ class ManagerApprovalsScreen extends ConsumerStatefulWidget {
 class _ManagerApprovalsScreenState
     extends ConsumerState<ManagerApprovalsScreen> {
   List<RequestItem> _items = <RequestItem>[];
+  Timer? _refreshTimer;
   bool _loading = true;
   String? _error;
   bool get _ar => Localizations.localeOf(context).languageCode == 'ar';
+
+  String _twoDigits(int value) => value.toString().padLeft(2, '0');
+
+  String _formatDateTime(String raw) {
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return raw;
+    final value = parsed.toLocal();
+    if (!_ar) {
+      return '${_twoDigits(value.day)}/${_twoDigits(value.month)}/${value.year} '
+          '${_twoDigits(value.hour)}:${_twoDigits(value.minute)}';
+    }
+    const months = <String>[
+      'يناير',
+      'فبراير',
+      'مارس',
+      'أبريل',
+      'مايو',
+      'يونيو',
+      'يوليو',
+      'أغسطس',
+      'سبتمبر',
+      'أكتوبر',
+      'نوفمبر',
+      'ديسمبر',
+    ];
+    final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    final period = value.hour < 12 ? 'ص' : 'م';
+    return '${value.day} ${months[value.month - 1]} ${value.year}، '
+        '${_twoDigits(hour)}:${_twoDigits(value.minute)} $period';
+  }
+
+  String _formatRequestWindow(RequestItem item) {
+    if (item.kind == 'leave') {
+      return '${_formatDateTime(item.from)} – ${_formatDateTime(item.to)}';
+    }
+    final exitLabel = _ar ? 'الخروج' : 'Exit';
+    final returnLabel = _ar ? 'العودة' : 'Return';
+    return '$exitLabel: ${_formatDateTime(item.from)}\n'
+        '$returnLabel: ${_formatDateTime(item.to)}';
+  }
+
+  String _typeLabel(RequestItem item) {
+    if (item.kind == 'leave') return _ar ? 'إجازة' : 'Leave';
+    return switch (item.type) {
+      'one_hour' => _ar ? 'ساعة واحدة' : 'One hour',
+      'multiple_hours' => _ar ? 'فترة محددة' : 'Specific period',
+      'until_shift_end' => _ar ? 'حتى نهاية الوردية' : 'Until shift end',
+      _ => _ar ? 'استئذان مخصص' : 'Custom permission',
+    };
+  }
+
+  String _statusLabel(String status) => switch (status) {
+    'pending' => _ar ? 'قيد الانتظار' : 'Pending',
+    'approved' => _ar ? 'معتمد' : 'Approved',
+    'rejected' => _ar ? 'مرفوض' : 'Rejected',
+    _ => status,
+  };
 
   @override
   void initState() {
     super.initState();
     _refresh();
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => unawaited(_refresh()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -111,9 +181,26 @@ class _ManagerApprovalsScreenState
                                         : 'Permission request'),
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 10),
+                            if (item.employeeName.isNotEmpty)
+                              Text(
+                                item.employeeName,
+                                style: Theme.of(context).textTheme.titleSmall,
+                              ),
+                            if (item.employeeEmail.isNotEmpty)
+                              Text(
+                                item.employeeEmail,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            const SizedBox(height: 8),
+                            Text(_typeLabel(item)),
+                            const SizedBox(height: 4),
+                            Text(_formatRequestWindow(item)),
+                            const SizedBox(height: 4),
+                            Text('${_ar ? 'السبب' : 'Reason'}: ${item.reason}'),
+                            const SizedBox(height: 4),
                             Text(
-                              '${item.from} – ${item.to}\n${item.reason}\n${item.status}',
+                              '${_ar ? 'الحالة' : 'Status'}: ${_statusLabel(item.status)}',
                             ),
                             if (item.status == 'pending') ...<Widget>[
                               const SizedBox(height: 12),

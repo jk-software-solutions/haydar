@@ -49,33 +49,45 @@ export async function GET(request: Request) {
   }
 
   const language = cleanLanguage(url.searchParams.get("lang"));
-  const upstreamUrl = new URL("https://nominatim.openstreetmap.org/search");
-  upstreamUrl.searchParams.set("format", "jsonv2");
-  upstreamUrl.searchParams.set("addressdetails", "1");
-  upstreamUrl.searchParams.set("limit", "6");
-  upstreamUrl.searchParams.set("countrycodes", "sa");
-  upstreamUrl.searchParams.set("accept-language", language);
-  upstreamUrl.searchParams.set("q", query);
+  const queryAttempts = Array.from(
+    new Set([
+      query,
+      `${rawQuery.trim()} Saudi Arabia`,
+      `${rawQuery.trim()} Saudi National Address`,
+      `${rawQuery.trim()} السعودية`,
+    ].filter((item) => item.trim().length >= 2)),
+  );
+  const found = new Map<string, GeocodeResult>();
+  for (const attemptedQuery of queryAttempts) {
+    const upstreamUrl = new URL("https://nominatim.openstreetmap.org/search");
+    upstreamUrl.searchParams.set("format", "jsonv2");
+    upstreamUrl.searchParams.set("addressdetails", "1");
+    upstreamUrl.searchParams.set("limit", "6");
+    upstreamUrl.searchParams.set("countrycodes", "sa");
+    upstreamUrl.searchParams.set("accept-language", language);
+    upstreamUrl.searchParams.set("q", attemptedQuery);
 
-  const upstream = await fetch(upstreamUrl, {
-    headers: {
-      Accept: "application/json",
-      "Accept-Language": language,
-      "User-Agent": "HADIR branch location picker/0.1 (https://2-28-31-153.sslip.io)",
-    },
-    cache: "no-store",
-  });
-  if (!upstream.ok) {
-    return Response.json(
-      { error: "geocode_unavailable", results: [] satisfies GeocodeResult[] },
-      { status: 502 },
-    );
+    const upstream = await fetch(upstreamUrl, {
+      headers: {
+        Accept: "application/json",
+        "Accept-Language": language,
+        "User-Agent": "HADIR branch location picker/0.1 (https://2-28-31-153.sslip.io)",
+      },
+      cache: "no-store",
+    });
+    if (!upstream.ok) {
+      return Response.json(
+        { error: "geocode_unavailable", results: [] satisfies GeocodeResult[] },
+        { status: 502 },
+      );
+    }
+    const payload = (await upstream.json()) as NominatimPlace[];
+    for (const result of payload.map(placeToResult)) {
+      if (result !== null) found.set(result.id, result);
+    }
+    if (found.size > 0) break;
   }
-  const payload = (await upstream.json()) as NominatimPlace[];
-  const results = payload
-    .map(placeToResult)
-    .filter((item): item is GeocodeResult => item !== null)
-    .sort((a, b) => b.importance - a.importance);
+  const results = Array.from(found.values()).sort((a, b) => b.importance - a.importance);
 
   return Response.json({ results });
 }

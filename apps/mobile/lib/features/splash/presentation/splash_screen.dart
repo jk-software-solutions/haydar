@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -68,11 +69,12 @@ class SplashScreen extends ConsumerWidget {
                         const SizedBox(height: 8),
                         _ApiStatusChip(apiHealth: apiHealth),
                         const SizedBox(height: 8),
-                        Text(
-                          '${l10n.apiEndpoint}: $apiBaseUrl',
-                          textAlign: TextAlign.center,
-                          style: textTheme.bodySmall,
-                        ),
+                        if (!kReleaseMode)
+                          Text(
+                            '${l10n.apiEndpoint}: $apiBaseUrl',
+                            textAlign: TextAlign.center,
+                            style: textTheme.bodySmall,
+                          ),
                       ],
                     ),
                   ),

@@ -21,7 +21,9 @@ export type EditableBranch = {
   longitude: string;
   geofence_radius_m: number;
   timezone: string;
+  is_active: boolean;
   manager_membership_id: string | null;
+  wifi_networks: { ssid: string; bssid: string }[];
   version: number;
 };
 
@@ -63,6 +65,18 @@ export function BranchEditForm({
         <LocationMapPicker locale={locale} initialLatitude={branch.latitude} initialLongitude={branch.longitude} />
         <label>{ar ? "نطاق الحضور بالمتر" : "Geofence radius (m)"}<input name="geofence_radius_m" type="number" min="20" max="10000" defaultValue={branch.geofence_radius_m} required /></label>
         <label>{ar ? "المنطقة الزمنية" : "Timezone"}<input name="timezone" defaultValue={branch.timezone} required /></label>
+        <label>
+          {ar ? "شبكات Wi‑Fi المسموحة للحضور" : "Authorized Wi‑Fi networks"}
+          <textarea name="wifi_networks" rows={3} defaultValue={branch.wifi_networks.map((network) => `${network.ssid}|${network.bssid}`).join("\n")} placeholder={ar ? "اسم الشبكة|عنوان BSSID لكل سطر (اختياري)" : "SSID|BSSID per line (optional)"} />
+          <small>{ar ? "اتصل بالشبكة من هاتف الموظف؛ يمكن معرفة BSSID من إعدادات الراوتر." : "The employee must be connected to one of these networks. Find the BSSID in the router settings."}</small>
+        </label>
+        <label>
+          {ar ? "حالة الفرع" : "Branch status"}
+          <select name="is_active" defaultValue={String(branch.is_active)}>
+            <option value="true">{ar ? "نشط" : "Active"}</option>
+            <option value="false">{ar ? "غير نشط" : "Inactive"}</option>
+          </select>
+        </label>
         <label>
           {ar ? "مدير الفرع" : "Branch manager"}
           <select name="manager_membership_id" defaultValue={branch.manager_membership_id ?? ""}>

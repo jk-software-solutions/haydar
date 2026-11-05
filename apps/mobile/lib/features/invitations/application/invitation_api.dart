@@ -50,6 +50,14 @@ class InvitationApi {
     );
     return CreatedInvitation.fromJson(response.data ?? <String, dynamic>{});
   }
+
+  Future<CreatedInvitation> resendCode(String invitationId) async {
+    final response = await dio.post<Map<String, dynamic>>(
+      '/invitations/$invitationId/resend-code',
+      options: _authorization,
+    );
+    return CreatedInvitation.fromJson(response.data ?? <String, dynamic>{});
+  }
 }
 
 class InvitationSummary {

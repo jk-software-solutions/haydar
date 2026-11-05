@@ -83,6 +83,12 @@ production secret store. Do not place these values in Git. Before release, reque
 dedicated test account, open the delivered link, change the password, prove the link cannot be
 reused, and prove all earlier sessions are revoked.
 
+The same SMTP relay delivers in-app notification copies by email when a member enables the
+`Email` notification preference. Delivery is retried by the scheduled maintenance job; failed
+messages remain pending, while disabled or muted notification kinds are marked as intentionally
+skipped. The maintenance unit runs the module from the active release so a release switch also
+updates its notification-email code.
+
 ## Release sequence
 
 1. Verify backups and database compatibility.

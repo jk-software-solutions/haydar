@@ -15,6 +15,8 @@ class TeamScreen extends ConsumerStatefulWidget {
 
 class _TeamScreenState extends ConsumerState<TeamScreen> {
   List<TeamMember> _members = <TeamMember>[];
+  final _searchController = TextEditingController();
+  String _search = '';
   bool _loading = true;
   String? _error;
   bool get _ar => Localizations.localeOf(context).languageCode == 'ar';
@@ -23,6 +25,12 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
   void initState() {
     super.initState();
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -39,8 +47,13 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
       if (mounted) {
         setState(
           () => _error = data is Map<String, dynamic>
-              ? data['detail'] as String? ?? '$error'
-              : '$error',
+              ? _friendlyError(
+                  data['code'] as String?,
+                  data['detail'] as String?,
+                )
+              : (_ar
+                    ? 'تعذر تحميل فريق الشركة.'
+                    : 'The company team could not be loaded.'),
         );
       }
     } finally {
@@ -51,6 +64,15 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
+    final visibleMembers = _members
+        .where((member) {
+          final query = _search.trim().toLowerCase();
+          return query.isEmpty ||
+              member.name.toLowerCase().contains(query) ||
+              member.email.toLowerCase().contains(query) ||
+              (member.jobTitle?.toLowerCase().contains(query) ?? false);
+        })
+        .toList(growable: false);
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView(
@@ -61,6 +83,28 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
             style: Theme.of(
               context,
             ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _searchController,
+            onChanged: (value) => setState(() => _search = value),
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: _ar
+                  ? 'ابحث بالاسم أو البريد'
+                  : 'Search by name or email',
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: _search.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: _ar ? 'مسح البحث' : 'Clear search',
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _search = '');
+                      },
+                      icon: const Icon(Icons.clear_rounded),
+                    ),
+            ),
           ),
           const SizedBox(height: 12),
           if (_error != null)
@@ -75,10 +119,21 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
-                child: Text(_ar ? 'لا يوجد موظفون.' : 'No employees found.'),
+                child: Text(
+                  _ar ? 'لا يوجد موظفون حتى الآن.' : 'No employees yet.',
+                ),
               ),
             ),
-          ..._members.map(
+          if (_members.isNotEmpty && visibleMembers.isEmpty)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  _ar ? 'لا توجد نتائج مطابقة.' : 'No matching employees.',
+                ),
+              ),
+            ),
+          ...visibleMembers.map(
             (member) => Card(
               child: ListTile(
                 leading: CircleAvatar(
@@ -88,16 +143,32 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
                 ),
                 title: Text(member.name),
                 subtitle: Text(
-                  '${member.jobTitle ?? member.role}\n${member.email}',
+                  '${member.jobTitle ?? _roleLabel(member.role)}\n${member.email}',
                 ),
                 isThreeLine: true,
-                trailing: Icon(
-                  member.attendanceEnabled
-                      ? Icons.location_on_outlined
-                      : Icons.location_off_outlined,
-                  color: member.status == 'active'
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).disabledColor,
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: <Widget>[
+                    Chip(
+                      label: Text(_statusLabel(member.status)),
+                      visualDensity: VisualDensity.compact,
+                      side: BorderSide.none,
+                      backgroundColor: member.status == 'active'
+                          ? Theme.of(context).colorScheme.primaryContainer
+                          : Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
+                    ),
+                    Icon(
+                      member.attendanceEnabled
+                          ? Icons.location_on_outlined
+                          : Icons.location_off_outlined,
+                      color: member.attendanceEnabled
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).disabledColor,
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -106,4 +177,35 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
       ),
     );
   }
+
+  String _statusLabel(String status) => switch (status) {
+    'active' => _ar ? 'نشط' : 'Active',
+    'inactive' => _ar ? 'غير نشط' : 'Inactive',
+    'pending' => _ar ? 'قيد الانتظار' : 'Pending',
+    _ => _ar ? 'غير معروف' : 'Unknown',
+  };
+
+  String _roleLabel(String role) => switch (role) {
+    'OWNER' => _ar ? 'مالك الشركة' : 'Owner',
+    'MANAGER' || 'COMPANY_MANAGER' => _ar ? 'مدير' : 'Manager',
+    'HR' || 'HR_OFFICER' => _ar ? 'الموارد البشرية' : 'HR officer',
+    'SUPERVISOR' => _ar ? 'مشرف' : 'Supervisor',
+    _ => _ar ? 'موظف' : 'Employee',
+  };
+
+  String _friendlyError(String? code, String? detail) => switch (code) {
+    'invalid_session' =>
+      _ar
+          ? 'انتهت الجلسة. سجّل الدخول مرة أخرى.'
+          : 'Your session expired. Sign in again.',
+    'permission_denied' =>
+      _ar
+          ? 'ليست لديك صلاحية لعرض الموظفين.'
+          : 'You do not have permission to view employees.',
+    _ =>
+      detail ??
+          (_ar
+              ? 'تعذر تحميل فريق الشركة.'
+              : 'The company team could not be loaded.'),
+  };
 }

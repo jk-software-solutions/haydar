@@ -7,6 +7,8 @@ describe("organization schemas", () => {
     const result = employeeProfileSchema.parse({
       version: "2",
       display_name: "  Ahmed Ali  ",
+      commercial_registration_number: "",
+      unified_number: "",
       employee_number: "",
       phone: "+966500000001",
       job_title: "  Supervisor ",

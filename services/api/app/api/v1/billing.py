@@ -12,7 +12,13 @@ from app.core.authorization import Permission, require_permission, tenant_contex
 from app.core.errors import ProblemError
 from app.core.subscription_catalog import active_subscription
 from app.db.session import get_session
-from app.models.platform import CompanySubscription, Coupon, CouponRedemption, SubscriptionPlan
+from app.models.platform import (
+    CompanySubscription,
+    Coupon,
+    CouponRedemption,
+    SubscriptionPlan,
+    SubscriptionRequest,
+)
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_session)]
@@ -39,6 +45,7 @@ class SubscriptionResponse(BaseModel):
     starts_at: datetime
     ends_at: datetime
     trial_ends_at: datetime | None
+    limits_override: dict[str, object] | None = None
     version: int
 
 
@@ -66,6 +73,26 @@ class PaymentProviderResponse(BaseModel):
     )
 
 
+class SubscriptionRequestCreate(BaseModel):
+    plan_id: UUID
+    billing_cycle: str = Field(pattern="^(monthly|annual)$")
+    coupon_code: str | None = Field(default=None, min_length=2, max_length=64)
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class SubscriptionRequestResponse(BaseModel):
+    id: UUID
+    plan: PlanResponse
+    billing_cycle: str
+    status: str
+    coupon_code: str | None
+    note: str | None
+    review_note: str | None
+    reviewed_at: datetime | None
+    activated_subscription_id: UUID | None
+    created_at: datetime
+
+
 def plan_response(plan: SubscriptionPlan) -> PlanResponse:
     return PlanResponse.model_validate(plan, from_attributes=True)
 
@@ -81,7 +108,25 @@ def subscription_response(
         starts_at=item.starts_at,
         ends_at=item.ends_at,
         trial_ends_at=item.trial_ends_at,
+        limits_override=item.limits_override,
         version=item.version,
+    )
+
+
+def subscription_request_response(
+    item: SubscriptionRequest, plan: SubscriptionPlan
+) -> SubscriptionRequestResponse:
+    return SubscriptionRequestResponse(
+        id=item.id,
+        plan=plan_response(plan),
+        billing_cycle=item.billing_cycle,
+        status=item.status,
+        coupon_code=item.coupon_code,
+        note=item.note,
+        review_note=item.review_note,
+        reviewed_at=item.reviewed_at,
+        activated_subscription_id=item.activated_subscription_id,
+        created_at=item.created_at,
     )
 
 
@@ -103,6 +148,71 @@ async def get_subscription(
     await require_permission(session, context, Permission.SUBSCRIPTION_VIEW)
     row = await active_subscription(session, context.company_id)
     return subscription_response(*row) if row else None
+
+
+@router.get("/subscription-requests", response_model=list[SubscriptionRequestResponse])
+async def list_subscription_requests(
+    auth_session: CurrentAuthSession, session: DatabaseSession
+) -> list[SubscriptionRequestResponse]:
+    context = tenant_context(auth_session)
+    await require_permission(session, context, Permission.SUBSCRIPTION_VIEW)
+    rows = await session.execute(
+        select(SubscriptionRequest, SubscriptionPlan)
+        .join(SubscriptionPlan, SubscriptionPlan.id == SubscriptionRequest.plan_id)
+        .where(SubscriptionRequest.company_id == context.company_id)
+        .order_by(SubscriptionRequest.created_at.desc())
+        .limit(20)
+    )
+    return [subscription_request_response(item, plan) for item, plan in rows]
+
+
+@router.post("/subscription-requests", response_model=SubscriptionRequestResponse, status_code=201)
+async def create_subscription_request(
+    payload: SubscriptionRequestCreate,
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> SubscriptionRequestResponse:
+    context = tenant_context(auth_session)
+    await require_permission(session, context, Permission.SUBSCRIPTION_MANAGE)
+    plan = await session.scalar(
+        select(SubscriptionPlan).where(
+            SubscriptionPlan.id == payload.plan_id,
+            SubscriptionPlan.is_active.is_(True),
+        )
+    )
+    if plan is None:
+        raise ProblemError(
+            status=404,
+            code="plan_not_found",
+            title="Plan not found",
+            detail="The selected subscription plan is not available.",
+        )
+    pending = await session.scalar(
+        select(SubscriptionRequest.id).where(
+            SubscriptionRequest.company_id == context.company_id,
+            SubscriptionRequest.status == "pending",
+        )
+    )
+    if pending is not None:
+        raise ProblemError(
+            status=409,
+            code="subscription_request_pending",
+            title="Subscription request already pending",
+            detail="A subscription request is already awaiting platform approval.",
+        )
+    item = SubscriptionRequest(
+        company_id=context.company_id,
+        requested_by_membership_id=context.membership.id,
+        plan_id=plan.id,
+        billing_cycle=payload.billing_cycle,
+        coupon_code=payload.coupon_code.strip().upper() if payload.coupon_code else None,
+        note=payload.note.strip() if payload.note else None,
+    )
+    session.add(item)
+    await session.flush()
+    await session.commit()
+    await session.refresh(item)
+    return subscription_request_response(item, plan)
 
 
 @router.post("/coupons/validate", response_model=CouponValidationResponse)

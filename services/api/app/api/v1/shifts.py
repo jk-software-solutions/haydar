@@ -161,6 +161,8 @@ class ShiftAssignmentResponse(BaseModel):
     shift_id: UUID
     shift_code: str
     shift_name: str
+    start_time: time
+    end_time: time
     membership_id: UUID | None
     branch_id: UUID | None
     effective_from: date
@@ -217,6 +219,8 @@ def assignment_response(assignment: ShiftAssignment, shift: Shift) -> ShiftAssig
         shift_id=assignment.shift_id,
         shift_code=shift.code,
         shift_name=shift.name,
+        start_time=shift.start_time,
+        end_time=shift.end_time,
         membership_id=assignment.membership_id,
         branch_id=assignment.branch_id,
         effective_from=assignment.effective_from,

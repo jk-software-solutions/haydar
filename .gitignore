@@ -7,6 +7,7 @@
 *.jks
 *.keystore
 google-services.json
+firebase-adminsdk*.json
 GoogleService-Info.plist
 apps/mobile/android/key.properties
 
@@ -72,3 +73,14 @@ artifacts/
 *.apk
 *.aab
 *.ipa
+*.hprof
+hadir-*.tar
+hadir-*.tar.gz
+hadir-*.tgz
+
+# Local review media and packaged duplicates
+docs/ux-reference/
+gallery/_portfolio_review/
+gallery/vidoes/
+gallery/screencapture-*.png
+gallery/*.zip

@@ -97,9 +97,25 @@ class _DeviceRequestsScreenState extends ConsumerState<DeviceRequestsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
           ? Center(
-              child: OutlinedButton(
-                onPressed: _load,
-                child: Text(l10n.retryButton),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(
+                      Icons.cloud_off_rounded,
+                      size: 40,
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(_error!, textAlign: TextAlign.center),
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: _load,
+                      child: Text(l10n.retryButton),
+                    ),
+                  ],
+                ),
               ),
             )
           : _items.isEmpty
@@ -118,6 +134,15 @@ class _DeviceRequestsScreenState extends ConsumerState<DeviceRequestsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: <Widget>[
+                          Text(
+                            item.employeeName.isEmpty
+                                ? item.employeeEmail
+                                : '${item.employeeName} · ${item.employeeEmail}',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          if (item.requestedDeviceName.isNotEmpty)
+                            Text(item.requestedDeviceName),
+                          const SizedBox(height: 8),
                           Text(item.reason),
                           const SizedBox(height: 12),
                           Row(

@@ -17,11 +17,11 @@ void main() {
 
     expect(androidBuild, contains('namespace = "com.jawadsites.haydar"'));
     expect(androidBuild, contains('applicationId = "com.jawadsites.haydar"'));
-    expect(androidManifest, contains('android:label="HADIR | حاضر"'));
+    expect(androidManifest, contains('android:label="DawamTech | دوام تك"'));
     expect(
       iosProject,
       contains('PRODUCT_BUNDLE_IDENTIFIER = com.jawadsites.haydar;'),
     );
-    expect(iosInfo, contains('<string>HADIR | حاضر</string>'));
+    expect(iosInfo, contains('<string>DawamTech | دوام تك</string>'));
   });
 }

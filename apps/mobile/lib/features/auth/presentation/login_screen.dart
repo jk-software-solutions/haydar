@@ -19,6 +19,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _passwordController = TextEditingController();
 
   String? _errorText;
+  bool _showPassword = false;
 
   @override
   void dispose() {
@@ -60,8 +61,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   String _friendlyError(DioException error) {
     final data = error.response?.data;
     if (data is Map<String, dynamic>) {
+      final code = data['code'] as String?;
+      final l10n = AppLocalizations.of(context);
+      final localized = switch (code) {
+        'invalid_credentials' => l10n.invalidCredentials,
+        'account_inactive' => l10n.permissionDenied,
+        _ => null,
+      };
+      if (localized != null) return localized;
       final detail = data['detail'];
-      if (detail is String && detail.isNotEmpty) {
+      if (detail is String &&
+          detail.isNotEmpty &&
+          !detail.contains('Traceback')) {
         return detail;
       }
     }
@@ -87,6 +98,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
+                    Text(
+                      'DawamTech | دوام تك',
+                      textAlign: TextAlign.center,
+                      style: textTheme.titleLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                        letterSpacing: 1.2,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
                     Text(
                       l10n.loginTitle,
                       textAlign: TextAlign.center,
@@ -119,11 +140,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _passwordController,
-                      obscureText: true,
+                      obscureText: !_showPassword,
                       autofillHints: const <String>[AutofillHints.password],
                       decoration: InputDecoration(
                         labelText: l10n.passwordLabel,
                         prefixIcon: const Icon(Icons.lock_outline_rounded),
+                        suffixIcon: IconButton(
+                          tooltip: _showPassword
+                              ? (Localizations.localeOf(context).languageCode ==
+                                        'ar'
+                                    ? 'إخفاء كلمة المرور'
+                                    : 'Hide password')
+                              : (Localizations.localeOf(context).languageCode ==
+                                        'ar'
+                                    ? 'إظهار كلمة المرور'
+                                    : 'Show password'),
+                          onPressed: () =>
+                              setState(() => _showPassword = !_showPassword),
+                          icon: Icon(
+                            _showPassword
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                          ),
+                        ),
                       ),
                       validator: (value) {
                         if (value == null || value.length < 8) {

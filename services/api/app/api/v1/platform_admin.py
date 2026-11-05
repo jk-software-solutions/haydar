@@ -22,6 +22,7 @@ from app.models.platform import (
     PlatformAuditLog,
     PlatformSetting,
     SubscriptionPlan,
+    SubscriptionRequest,
     SupportSession,
 )
 from app.services.idempotency import IdempotencyKey, begin_idempotency, complete_idempotency
@@ -55,7 +56,26 @@ class PlatformCompanyResponse(BaseModel):
     subscription_ends_at: datetime | None
     subscription_id: UUID | None
     subscription_version: int | None
+    subscription_limits_override: dict[str, object] | None = None
     created_at: datetime
+
+
+class PlatformSubscriptionRequestResponse(BaseModel):
+    id: UUID
+    company_id: UUID
+    company_name: str
+    plan: dict[str, object] | None = None
+    billing_cycle: str
+    status: str
+    coupon_code: str | None
+    note: str | None
+    review_note: str | None
+    created_at: datetime
+
+
+class SubscriptionRequestReviewRequest(BaseModel):
+    status: Literal["approved", "rejected"]
+    review_note: str = Field(min_length=3, max_length=2000)
 
 
 class CompanyAdminUpdateRequest(BaseModel):
@@ -67,6 +87,9 @@ class CompanyAdminUpdateRequest(BaseModel):
     duration_days: int | None = Field(default=None, ge=1, le=3660)
     coupon_code: str | None = Field(default=None, min_length=2, max_length=64)
     activation_note: str = Field(min_length=3, max_length=2000)
+    employee_limit: int | None = Field(default=None, ge=1, le=1_000_000)
+    branch_limit: int | None = Field(default=None, ge=1, le=1_000_000)
+    storage_limit_mb: int | None = Field(default=None, ge=1, le=1_000_000)
 
     @model_validator(mode="after")
     def validate_subscription_fields(self) -> "CompanyAdminUpdateRequest":
@@ -79,6 +102,11 @@ class CompanyAdminUpdateRequest(BaseModel):
             raise ValueError("coupon_code can only be used with a subscription activation")
         if self.coupon_code is not None and self.billing_cycle == "trial":
             raise ValueError("coupons cannot be applied to trial subscriptions")
+        if self.plan_id is None and any(
+            value is not None
+            for value in (self.employee_limit, self.branch_limit, self.storage_limit_mb)
+        ):
+            raise ValueError("custom limits require a subscription activation")
         return self
 
 
@@ -236,7 +264,43 @@ async def company_response(session: AsyncSession, company: Company) -> PlatformC
         subscription_ends_at=subscription.ends_at if subscription else None,
         subscription_id=subscription.id if subscription else None,
         subscription_version=subscription.version if subscription else None,
+        subscription_limits_override=(
+            subscription.limits_override if subscription else None
+        ),
         created_at=company.created_at,
+    )
+
+
+def subscription_request_response(
+    item: SubscriptionRequest, company: Company, plan: SubscriptionPlan | None
+) -> PlatformSubscriptionRequestResponse:
+    plan_payload = None
+    if plan is not None:
+        plan_payload = {
+            "id": plan.id,
+            "code": plan.code,
+            "name": plan.name,
+            "description": plan.description,
+            "monthly_price": plan.monthly_price,
+            "annual_price": plan.annual_price,
+            "currency": plan.currency,
+            "limits": plan.limits,
+            "features": plan.features,
+            "support_level": plan.support_level,
+            "is_active": plan.is_active,
+            "version": plan.version,
+        }
+    return PlatformSubscriptionRequestResponse(
+        id=item.id,
+        company_id=company.id,
+        company_name=company.display_name,
+        plan=plan_payload,
+        billing_cycle=item.billing_cycle,
+        status=item.status,
+        coupon_code=item.coupon_code,
+        note=item.note,
+        review_note=item.review_note,
+        created_at=item.created_at,
     )
 
 
@@ -308,6 +372,151 @@ async def list_platform_companies(
     return [await company_response(session, company) for company in companies]
 
 
+@router.get(
+    "/subscription-requests",
+    response_model=list[PlatformSubscriptionRequestResponse],
+)
+async def list_subscription_requests(
+    auth_session: CurrentAuthSession, session: DatabaseSession
+) -> list[PlatformSubscriptionRequestResponse]:
+    await require_platform_admin(auth_session)
+    rows = await session.execute(
+        select(SubscriptionRequest, Company, SubscriptionPlan)
+        .join(Company, Company.id == SubscriptionRequest.company_id)
+        .join(SubscriptionPlan, SubscriptionPlan.id == SubscriptionRequest.plan_id)
+        .where(SubscriptionRequest.status == "pending")
+        .order_by(SubscriptionRequest.created_at.asc())
+        .limit(200)
+    )
+    return [subscription_request_response(item, company, plan) for item, company, plan in rows]
+
+
+@router.patch(
+    "/subscription-requests/{request_id}",
+    response_model=PlatformSubscriptionRequestResponse,
+)
+async def review_subscription_request(
+    request_id: UUID,
+    payload: SubscriptionRequestReviewRequest,
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> PlatformSubscriptionRequestResponse:
+    admin = await require_platform_admin(auth_session)
+    row = await session.execute(
+        select(SubscriptionRequest, Company, SubscriptionPlan)
+        .join(Company, Company.id == SubscriptionRequest.company_id)
+        .join(SubscriptionPlan, SubscriptionPlan.id == SubscriptionRequest.plan_id)
+        .where(SubscriptionRequest.id == request_id)
+        .with_for_update()
+    )
+    result = row.first()
+    if result is None:
+        raise ProblemError(status=404, code="subscription_request_not_found", title="Subscription request not found", detail="The subscription request does not exist.")
+    item, company, plan = result
+    if item.status != "pending":
+        raise ProblemError(status=409, code="subscription_request_reviewed", title="Subscription request already reviewed", detail="This subscription request has already been reviewed.")
+    now = datetime.now(UTC)
+    item.status = payload.status
+    item.review_note = payload.review_note.strip()
+    item.reviewed_at = now
+    if payload.status == "approved":
+        active_items = await session.scalars(
+            select(CompanySubscription)
+            .where(
+                CompanySubscription.company_id == company.id,
+                CompanySubscription.status.in_(("active", "trial")),
+            )
+            .with_for_update()
+        )
+        for active_item in active_items:
+            active_item.status = "replaced"
+            active_item.version += 1
+        duration_days = 365 if item.billing_cycle == "annual" else 30
+        subscription = CompanySubscription(
+            company_id=company.id,
+            plan_id=plan.id,
+            billing_cycle=item.billing_cycle,
+            status="active",
+            starts_at=now,
+            ends_at=now + timedelta(days=duration_days),
+            activation_note=f"Customer request {item.id}: {item.note or 'No note'}",
+        )
+        session.add(subscription)
+        await session.flush()
+        if item.coupon_code:
+            coupon = await session.scalar(
+                select(Coupon)
+                .where(Coupon.code == item.coupon_code.strip().upper())
+                .with_for_update()
+            )
+            previous_redemption = None
+            if coupon is not None:
+                previous_redemption = await session.scalar(
+                    select(CouponRedemption.id).where(
+                        CouponRedemption.coupon_id == coupon.id,
+                        CouponRedemption.company_id == company.id,
+                    )
+                )
+            if (
+                coupon is None
+                or not coupon.is_active
+                or coupon.valid_from > now
+                or coupon.valid_until <= now
+                or previous_redemption is not None
+                or (
+                    coupon.max_redemptions is not None
+                    and coupon.redeemed_count >= coupon.max_redemptions
+                )
+                or (coupon.plan_id is not None and coupon.plan_id != plan.id)
+                or (
+                    coupon.billing_cycle is not None
+                    and coupon.billing_cycle != item.billing_cycle
+                )
+            ):
+                raise ProblemError(
+                    status=409,
+                    code="coupon_invalid",
+                    title="Coupon is invalid",
+                    detail="The coupon cannot be redeemed for this subscription request.",
+                )
+            coupon.redeemed_count += 1
+            session.add(
+                CouponRedemption(
+                    coupon_id=coupon.id,
+                    company_id=company.id,
+                    subscription_id=subscription.id,
+                )
+            )
+        item.activated_subscription_id = subscription.id
+        company.status = "active"
+        session.add(
+            PlatformAuditLog(
+                platform_user_id=admin.id,
+                action="subscription_request.approved",
+                target_type="subscription_request",
+                target_id=item.id,
+                details={
+                    "plan": plan.code,
+                    "billing_cycle": item.billing_cycle,
+                    "duration_days": duration_days,
+                    "coupon": item.coupon_code,
+                },
+            )
+        )
+    else:
+        session.add(
+            PlatformAuditLog(
+                platform_user_id=admin.id,
+                action="subscription_request.rejected",
+                target_type="subscription_request",
+                target_id=item.id,
+                details={"reason": item.review_note},
+            )
+        )
+    await session.commit()
+    return subscription_request_response(item, company, plan)
+
+
 @router.get("/plans", response_model=list[PlanAdminResponse])
 async def list_admin_plans(
     auth_session: CurrentAuthSession, session: DatabaseSession
@@ -372,16 +581,22 @@ async def update_plan(
             title="Plan not found",
             detail="The subscription plan does not exist.",
         )
+    changes = payload.model_dump(exclude={"version"}, exclude_unset=True)
+    if changes.get("currency"):
+        changes["currency"] = str(changes["currency"]).upper()
     if item.version != payload.version:
+        # A browser can submit the same server action more than once (for
+        # example after a double click or a retry). If the stored plan already
+        # contains exactly the requested values, treat the duplicate as a
+        # successful, idempotent save instead of surfacing a false failure.
+        if all(getattr(item, field) == value for field, value in changes.items()):
+            return PlanAdminResponse.model_validate(item, from_attributes=True)
         raise ProblemError(
             status=409,
             code="concurrency_conflict",
             title="Plan changed",
             detail="Reload the plan before updating it.",
         )
-    changes = payload.model_dump(exclude={"version"}, exclude_unset=True)
-    if changes.get("currency"):
-        changes["currency"] = str(changes["currency"]).upper()
     for field, value in changes.items():
         setattr(item, field, value)
     item.version += 1
@@ -479,6 +694,16 @@ async def update_platform_company(
             if payload.billing_cycle == "trial"
             else None,
             activation_note=payload.activation_note,
+            limits_override={
+                key: value
+                for key, value in {
+                    "employees": payload.employee_limit,
+                    "branches": payload.branch_limit,
+                    "storage_mb": payload.storage_limit_mb,
+                }.items()
+                if value is not None
+            }
+            or None,
         )
         session.add(subscription)
         await session.flush()
@@ -534,6 +759,7 @@ async def update_platform_company(
                 "plan": plan.code,
                 "billing_cycle": payload.billing_cycle,
                 "duration_days": payload.duration_days,
+                "limits_override": subscription.limits_override,
             }
         )
     session.add(

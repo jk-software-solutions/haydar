@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,12 +26,23 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
   NotificationPreferences? _preferences;
   bool _loading = true;
   String? _error;
+  Timer? _refreshTimer;
   bool get _ar => Localizations.localeOf(context).languageCode == 'ar';
 
   @override
   void initState() {
     super.initState();
     _refresh();
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => unawaited(_refresh()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -48,7 +61,16 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
       }
     } on DioException catch (error) {
       if (mounted) {
-        setState(() => _error = '${error.response?.data ?? error.message}');
+        final detail = error.response?.data is Map<String, dynamic>
+            ? (error.response!.data as Map<String, dynamic>)['detail']
+            : null;
+        setState(
+          () => _error = detail is String && detail.isNotEmpty
+              ? detail
+              : (_ar
+                    ? 'تعذر تحميل الإشعارات. تحقق من الاتصال ثم أعد المحاولة.'
+                    : 'Notifications could not be loaded. Check your connection and try again.'),
+        );
       }
     } finally {
       if (mounted) {
@@ -180,6 +202,72 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
     }
   }
 
+  String _notificationTitle(AppNotification item) {
+    if (!_ar) return item.title;
+    return switch (item.kind) {
+      'permission_requested' => 'طلب استئذان جديد',
+      'permission_approved' => 'تم اعتماد طلب الاستئذان',
+      'permission_rejected' => 'تم رفض طلب الاستئذان',
+      'leave_requested' => 'طلب إجازة جديد',
+      'leave_reviewed' => 'تمت مراجعة طلب الإجازة',
+      'geofence_exit_unauthorized' => 'مغادرة غير مصرح بها من النطاق',
+      'task_created' => 'مهمة جديدة: ${item.title}',
+      'task_comment_added' => 'رسالة جديدة على المهمة: ${item.title}',
+      'task_status_changed' => 'تحديث حالة المهمة: ${item.title}',
+      'task_completed' => 'اكتملت المهمة مع مرفق: ${item.title}',
+      'device_change_requested' => 'طلب تغيير جهاز جديد',
+      'missing_checkout' => 'تم إغلاق الوردية دون تسجيل الانصراف',
+      'attendance_reminder' => 'تذكير بإثبات الحضور',
+      'attendance_absent' => 'تم تسجيل الغياب',
+      _ => 'إشعار جديد',
+    };
+  }
+
+  String _notificationBody(AppNotification item) {
+    final body = !_ar
+        ? item.body
+        : switch (item.kind) {
+            'permission_requested' =>
+              'أرسل أحد الموظفين طلب استئذان أو خروج مبكر للمراجعة.',
+            'permission_approved' => 'تمت الموافقة على طلب الاستئذان.',
+            'permission_rejected' => 'تم رفض طلب الاستئذان.',
+            'leave_requested' => 'أرسل أحد الموظفين طلب إجازة للمراجعة.',
+            'leave_reviewed' => 'تم تحديث حالة طلب الإجازة.',
+            'geofence_exit_unauthorized' =>
+              'بقي موظف خارج نطاق الفرع دون استئذان معتمد.',
+            'task_created' => 'تم إسناد مهمة جديدة إليك.',
+            'task_comment_added' =>
+              'أضاف أحد المشاركين رسالة جديدة إلى المهمة.',
+            'task_status_changed' => 'تم تحديث حالة المهمة.',
+            'task_completed' =>
+              'أنجز الموظف المهمة وأرفق الإيصال. افتح الإشعار لمراجعته.',
+            'task_extension_approved' => 'تمت الموافقة على طلب تمديد المهمة.',
+            'task_extension_rejected' => 'تم رفض طلب تمديد المهمة.',
+            'device_change_requested' => 'طلب موظف اعتماد هاتف بديل للمراجعة.',
+            'missing_checkout' =>
+              'انتهت الوردية ومهلة الانصراف 30 دقيقة دون تسجيل خروج، فأُغلقت تلقائياً ويمكنك بدء وردية لاحقة.',
+            'attendance_reminder' =>
+              'لم تثبت حضورك بعد انتهاء فترة السماح. سجّل الحضور الآن أو أرسل طلب استئذان.',
+            'attendance_absent' =>
+              'انتهت الوردية دون تسجيل حضور، لذلك أُغلق اليوم كسجل غياب.',
+            _ => 'لديك إشعار جديد. افتحه لمعرفة التفاصيل.',
+          };
+    final actor = item.actorName?.trim();
+    if (actor == null || actor.isEmpty) return body;
+    return '$body\n${_ar ? 'المنفّذ' : 'Actor'}: $actor';
+  }
+
+  String _formatDateTime(DateTime? raw) {
+    if (raw == null) return '';
+    final value = raw.toLocal();
+    final date = MaterialLocalizations.of(context).formatMediumDate(value);
+    final time = MaterialLocalizations.of(context).formatTimeOfDay(
+      TimeOfDay.fromDateTime(value),
+      alwaysUse24HourFormat: !_ar,
+    );
+    return '$date · $time';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -236,9 +324,9 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
                               ? Icons.priority_high_rounded
                               : Icons.notifications_outlined,
                         ),
-                        title: Text(item.title),
+                        title: Text(_notificationTitle(item)),
                         subtitle: Text(
-                          '${item.body}\n${item.createdAt?.toLocal() ?? ''}',
+                          '${_notificationBody(item)}\n${_formatDateTime(item.createdAt)}',
                         ),
                         isThreeLine: true,
                         onTap: () => _open(item),

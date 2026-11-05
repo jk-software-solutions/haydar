@@ -18,6 +18,9 @@ from app.core.authorization import (
 from app.core.errors import ProblemError
 from app.db.session import get_session
 from app.models.devices import AuditLog, Device, DeviceChangeRequest
+from app.models.identity import CompanyMembership, User
+from app.models.workforce import Notification
+from app.services.notification_actor import membership_actor_name
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_session)]
@@ -63,6 +66,10 @@ class DeviceChangeResponse(BaseModel):
     reason: str
     status: str
     reviewed_at: datetime | None
+    employee_name: str
+    employee_email: str
+    requested_device_name: str
+    created_at: datetime
 
 
 class DeviceChangeListResponse(BaseModel):
@@ -84,7 +91,23 @@ def device_response(device: Device) -> DeviceResponse:
     )
 
 
-def change_response(change: DeviceChangeRequest) -> DeviceChangeResponse:
+async def change_response(
+    session: AsyncSession, change: DeviceChangeRequest
+) -> DeviceChangeResponse:
+    employee = await session.scalar(
+        select(User)
+        .join(CompanyMembership, CompanyMembership.user_id == User.id)
+        .where(
+            CompanyMembership.company_id == change.company_id,
+            CompanyMembership.id == change.membership_id,
+        )
+    )
+    requested_device = await session.scalar(
+        select(Device).where(
+            Device.company_id == change.company_id,
+            Device.id == change.requested_device_id,
+        )
+    )
     return DeviceChangeResponse(
         id=change.id,
         membership_id=change.membership_id,
@@ -93,6 +116,10 @@ def change_response(change: DeviceChangeRequest) -> DeviceChangeResponse:
         reason=change.reason,
         status=change.status,
         reviewed_at=change.reviewed_at,
+        employee_name=employee.full_name if employee else "",
+        employee_email=employee.email if employee else "",
+        requested_device_name=requested_device.device_name if requested_device else "",
+        created_at=change.created_at,
     )
 
 
@@ -188,6 +215,33 @@ async def register_device(
         )
         session.add(change)
         await session.flush()
+        manager_ids = await session.scalars(
+            select(CompanyMembership.id).where(
+                CompanyMembership.company_id == context.company_id,
+                CompanyMembership.status == "active",
+                CompanyMembership.role_code.in_(("OWNER", "MANAGER", "HR_OFFICER")),
+            )
+        )
+        actor_name = await membership_actor_name(
+            session, context.company_id, context.membership.id
+        )
+        session.add_all(
+            [
+                Notification(
+                    company_id=context.company_id,
+                    membership_id=manager_id,
+                    kind="device_change_requested",
+                    title="Device change request",
+                    body="An employee requested approval for a replacement device.",
+                    actor_name=actor_name,
+                    target_type="device_change_request",
+                    target_id=change.id,
+                    urgent=True,
+                )
+                for manager_id in set(manager_ids)
+                if manager_id != context.membership.id
+            ]
+        )
     session.add(
         AuditLog(
             company_id=context.company_id,
@@ -250,7 +304,7 @@ async def list_device_changes(
         .limit(page_size)
     )
     return DeviceChangeListResponse(
-        items=[change_response(change) for change in changes],
+        items=[await change_response(session, change) for change in changes],
         page=page,
         page_size=page_size,
         total=total or 0,
@@ -322,7 +376,7 @@ async def approve_device_change(
         )
     )
     await session.commit()
-    return change_response(change)
+    return await change_response(session, change)
 
 
 @router.post("/change-requests/{request_id}/reject", response_model=DeviceChangeResponse)
@@ -376,4 +430,4 @@ async def reject_device_change(
         )
     )
     await session.commit()
-    return change_response(change)
+    return await change_response(session, change)

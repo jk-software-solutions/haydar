@@ -15,7 +15,7 @@ class HaydarApp extends ConsumerWidget {
     final locale = ref.watch(localeControllerProvider);
 
     return MaterialApp.router(
-      title: 'HADIR | حاضر',
+      title: 'DawamTech | دوام تك',
       debugShowCheckedModeBanner: false,
       locale: locale,
       supportedLocales: AppLocalizations.supportedLocales,
@@ -27,7 +27,9 @@ class HaydarApp extends ConsumerWidget {
       ],
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.system,
+      // Keep the dark theme available, but present the calm business light
+      // theme consistently as the default across devices.
+      themeMode: ThemeMode.light,
       routerConfig: appRouter,
     );
   }

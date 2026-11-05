@@ -11,6 +11,7 @@ describe("shift schema", () => {
       end_time: "06:00",
       working_days: ["0", "1", "2"],
       grace_period_minutes: "10",
+      checkout_grace_period_minutes: "0",
       break_duration_minutes: "60",
       effective_from: "2026-08-01",
       effective_to: "",

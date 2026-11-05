@@ -6,6 +6,222 @@ import '../../auth/application/auth_api.dart';
 import '../../team/application/team_api.dart';
 import '../application/organization_admin_api.dart';
 
+class _PermissionCopy {
+  const _PermissionCopy(this.label, this.description);
+
+  final String label;
+  final String description;
+}
+
+const Map<String, ({_PermissionCopy ar, _PermissionCopy en})>
+_permissionCopies = <String, ({_PermissionCopy ar, _PermissionCopy en})>{
+  'members:view': (
+    ar: _PermissionCopy('عرض الموظفين', 'عرض عضويات الشركة والدعوات.'),
+    en: _PermissionCopy(
+      'View employees',
+      'View company memberships and invitations.',
+    ),
+  ),
+  'members:create': (
+    ar: _PermissionCopy('دعوة موظفين', 'إرسال دعوات لموظفين جدد.'),
+    en: _PermissionCopy('Invite employees', 'Invite new company members.'),
+  ),
+  'members:manage': (
+    ar: _PermissionCopy('إدارة الموظفين', 'تحديث العضويات والأدوار.'),
+    en: _PermissionCopy(
+      'Manage employees',
+      'Update company memberships and roles.',
+    ),
+  ),
+  'settings:manage': (
+    ar: _PermissionCopy('إعدادات الشركة', 'تعديل إعدادات الشركة العامة.'),
+    en: _PermissionCopy('Company settings', 'Manage company settings.'),
+  ),
+  'devices:view': (
+    ar: _PermissionCopy(
+      'عرض الأجهزة',
+      'عرض أجهزة الموظفين وطلبات تغيير الجهاز.',
+    ),
+    en: _PermissionCopy(
+      'View devices',
+      'View device registrations and change requests.',
+    ),
+  ),
+  'devices:manage': (
+    ar: _PermissionCopy(
+      'إدارة الأجهزة',
+      'قبول أو رفض طلبات تغيير جهاز الموظف.',
+    ),
+    en: _PermissionCopy(
+      'Manage devices',
+      'Approve or reject employee device changes.',
+    ),
+  ),
+  'branches:view': (
+    ar: _PermissionCopy('عرض الفروع', 'عرض فروع الشركة.'),
+    en: _PermissionCopy('View branches', 'View company branches.'),
+  ),
+  'branches:manage': (
+    ar: _PermissionCopy('إدارة الفروع', 'إنشاء وتحديث فروع الشركة.'),
+    en: _PermissionCopy(
+      'Manage branches',
+      'Create and update company branches.',
+    ),
+  ),
+  'departments:view': (
+    ar: _PermissionCopy('عرض الأقسام', 'عرض أقسام الشركة.'),
+    en: _PermissionCopy('View departments', 'View company departments.'),
+  ),
+  'departments:manage': (
+    ar: _PermissionCopy('إدارة الأقسام', 'إنشاء وتحديث أقسام الشركة.'),
+    en: _PermissionCopy(
+      'Manage departments',
+      'Create and update company departments.',
+    ),
+  ),
+  'assignments:view': (
+    ar: _PermissionCopy('عرض التعيينات', 'عرض سجل تعيين الموظفين على الفروع.'),
+    en: _PermissionCopy(
+      'View assignments',
+      'View employee branch assignment history.',
+    ),
+  ),
+  'assignments:manage': (
+    ar: _PermissionCopy('إدارة التعيينات', 'تعيين ونقل الموظفين بين الفروع.'),
+    en: _PermissionCopy(
+      'Manage assignments',
+      'Assign and transfer employees between branches.',
+    ),
+  ),
+  'shifts:view': (
+    ar: _PermissionCopy('عرض الورديات', 'عرض ورديات الشركة وتعييناتها.'),
+    en: _PermissionCopy('View shifts', 'View company shifts and assignments.'),
+  ),
+  'shifts:manage': (
+    ar: _PermissionCopy('إدارة الورديات', 'إنشاء وتعيين ورديات الشركة.'),
+    en: _PermissionCopy('Manage shifts', 'Create and assign company shifts.'),
+  ),
+  'attendance:view': (
+    ar: _PermissionCopy('عرض الحضور', 'عرض سجلات حضور وانصراف الموظفين.'),
+    en: _PermissionCopy('View attendance', 'View tenant attendance records.'),
+  ),
+  'attendance:manage': (
+    ar: _PermissionCopy('إدارة الحضور', 'إنشاء وتصحيح سجلات الحضور.'),
+    en: _PermissionCopy(
+      'Manage attendance',
+      'Create and correct attendance records.',
+    ),
+  ),
+  'permissions:view': (
+    ar: _PermissionCopy('عرض الاستئذانات', 'عرض طلبات استئذان الموظفين.'),
+    en: _PermissionCopy(
+      'View permissions',
+      'View employee permission requests.',
+    ),
+  ),
+  'permissions:manage': (
+    ar: _PermissionCopy(
+      'إدارة الاستئذانات',
+      'مراجعة طلبات الاستئذان وقبولها أو رفضها.',
+    ),
+    en: _PermissionCopy(
+      'Manage permissions',
+      'Review employee permission requests.',
+    ),
+  ),
+  'presence:manage': (
+    ar: _PermissionCopy('إثبات التواجد', 'إنشاء ومراجعة طلبات إثبات التواجد.'),
+    en: _PermissionCopy(
+      'Proof of presence',
+      'Create and review presence requests.',
+    ),
+  ),
+  'geofence_exits:view': (
+    ar: _PermissionCopy(
+      'عرض مغادرة النطاق',
+      'عرض أحداث مغادرة النطاق غير المصرح بها.',
+    ),
+    en: _PermissionCopy(
+      'View geofence exits',
+      'View unauthorized geofence exit events.',
+    ),
+  ),
+  'geofence_exits:manage': (
+    ar: _PermissionCopy(
+      'إدارة مغادرة النطاق',
+      'مراجعة أحداث مغادرة النطاق غير المصرح بها.',
+    ),
+    en: _PermissionCopy(
+      'Manage geofence exits',
+      'Review unauthorized geofence exit events.',
+    ),
+  ),
+  'tasks:view': (
+    ar: _PermissionCopy('عرض المهام', 'عرض المهام المسندة.'),
+    en: _PermissionCopy('View tasks', 'View assigned tenant tasks.'),
+  ),
+  'tasks:manage': (
+    ar: _PermissionCopy('إدارة المهام', 'إنشاء وإدارة مهام العمل.'),
+    en: _PermissionCopy('Manage tasks', 'Create and manage tenant tasks.'),
+  ),
+  'leave:view': (
+    ar: _PermissionCopy('عرض الإجازات', 'عرض طلبات الإجازة والأرصدة.'),
+    en: _PermissionCopy(
+      'View leave',
+      'View tenant leave requests and balances.',
+    ),
+  ),
+  'leave:manage': (
+    ar: _PermissionCopy(
+      'إدارة الإجازات',
+      'إدارة أنواع الإجازات والأرصدة والموافقات.',
+    ),
+    en: _PermissionCopy(
+      'Manage leave',
+      'Manage leave types, balances, and approvals.',
+    ),
+  ),
+  'documents:view': (
+    ar: _PermissionCopy('عرض الوثائق', 'عرض وثائق الموظفين.'),
+    en: _PermissionCopy('View documents', 'View tenant employee documents.'),
+  ),
+  'documents:manage': (
+    ar: _PermissionCopy('إدارة الوثائق', 'إدارة ومراجعة وثائق الموظفين.'),
+    en: _PermissionCopy(
+      'Manage documents',
+      'Manage and review employee documents.',
+    ),
+  ),
+  'reports:view': (
+    ar: _PermissionCopy('عرض التقارير', 'عرض تقارير القوى العاملة.'),
+    en: _PermissionCopy('View reports', 'View tenant workforce reports.'),
+  ),
+  'reports:export': (
+    ar: _PermissionCopy('تصدير التقارير', 'تصدير التقارير إلى ملفات.'),
+    en: _PermissionCopy('Export reports', 'Export tenant reports.'),
+  ),
+  'subscription:view': (
+    ar: _PermissionCopy('عرض الاشتراك', 'عرض اشتراك الشركة.'),
+    en: _PermissionCopy('View subscription', 'View the company subscription.'),
+  ),
+  'subscription:manage': (
+    ar: _PermissionCopy('إدارة الاشتراك', 'إدارة طلبات اشتراك الشركة.'),
+    en: _PermissionCopy(
+      'Manage subscription',
+      'Manage company subscription requests.',
+    ),
+  ),
+};
+
+_PermissionCopy _permissionCopy(PermissionOption permission, bool ar) {
+  final copy = _permissionCopies[permission.code];
+  return copy == null
+      ? _PermissionCopy(permission.code, permission.description)
+      : ar
+      ? copy.ar
+      : copy.en;
+}
+
 class OwnerAccessScreen extends ConsumerStatefulWidget {
   const OwnerAccessScreen({required this.session, super.key});
 
@@ -237,41 +453,46 @@ class _MemberAccessEditorScreenState
         ),
         const SizedBox(height: 8),
         for (final permission in widget.data.permissions)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: DropdownButtonFormField<String>(
-              initialValue: !_overrides.containsKey(permission.code)
-                  ? 'inherit'
-                  : _overrides[permission.code]!
-                  ? 'allow'
-                  : 'deny',
-              decoration: InputDecoration(
-                labelText: permission.code,
-                helperText: permission.description,
-                border: const OutlineInputBorder(),
-              ),
-              items: <DropdownMenuItem<String>>[
-                DropdownMenuItem(
-                  value: 'inherit',
-                  child: Text(_ar ? 'حسب الدور' : 'Inherit role'),
+          Builder(
+            builder: (context) {
+              final copy = _permissionCopy(permission, _ar);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: DropdownButtonFormField<String>(
+                  initialValue: !_overrides.containsKey(permission.code)
+                      ? 'inherit'
+                      : _overrides[permission.code]!
+                      ? 'allow'
+                      : 'deny',
+                  decoration: InputDecoration(
+                    labelText: copy.label,
+                    helperText: copy.description,
+                    border: const OutlineInputBorder(),
+                  ),
+                  items: <DropdownMenuItem<String>>[
+                    DropdownMenuItem(
+                      value: 'inherit',
+                      child: Text(_ar ? 'حسب الدور' : 'Inherit role'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'allow',
+                      child: Text(_ar ? 'سماح' : 'Allow'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'deny',
+                      child: Text(_ar ? 'منع' : 'Deny'),
+                    ),
+                  ],
+                  onChanged: (value) => setState(() {
+                    if (value == 'inherit') {
+                      _overrides.remove(permission.code);
+                    } else {
+                      _overrides[permission.code] = value == 'allow';
+                    }
+                  }),
                 ),
-                DropdownMenuItem(
-                  value: 'allow',
-                  child: Text(_ar ? 'سماح' : 'Allow'),
-                ),
-                DropdownMenuItem(
-                  value: 'deny',
-                  child: Text(_ar ? 'منع' : 'Deny'),
-                ),
-              ],
-              onChanged: (value) => setState(() {
-                if (value == 'inherit') {
-                  _overrides.remove(permission.code);
-                } else {
-                  _overrides[permission.code] = value == 'allow';
-                }
-              }),
-            ),
+              );
+            },
           ),
         _ScopeEditor(
           title: _ar ? 'نطاق الفروع' : 'Branch scope',

@@ -13,6 +13,7 @@ describe("branch schema", () => {
       longitude: "46.6753",
       geofence_radius_m: "125",
       timezone: "Asia/Riyadh",
+      is_active: "true",
     });
     expect(result).toMatchObject({ code: "RUH-01", latitude: 24.7136, geofence_radius_m: 125 });
     expect(result.saudi_short_address).toBeNull();

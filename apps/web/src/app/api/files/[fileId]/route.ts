@@ -12,11 +12,14 @@ export async function GET(
     cache: "no-store",
   });
   if (!upstream.ok) return new Response(null, { status: upstream.status });
+  const contentType = upstream.headers.get("Content-Type") ?? "application/octet-stream";
   return new Response(upstream.body, {
     status: 200,
     headers: {
-      "Content-Type": upstream.headers.get("Content-Type") ?? "application/octet-stream",
-      "Content-Disposition": upstream.headers.get("Content-Disposition") ?? "attachment",
+      "Content-Type": contentType,
+      "Content-Disposition": contentType.startsWith("image/")
+        ? "inline"
+        : upstream.headers.get("Content-Disposition") ?? "attachment",
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },

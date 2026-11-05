@@ -44,6 +44,7 @@ class BranchFields(BaseModel):
     geofence_radius_m: int = Field(default=100, ge=20, le=10000)
     timezone: str = Field(default="Asia/Riyadh", min_length=1, max_length=64)
     working_hours: dict[str, Any] = Field(default_factory=dict)
+    wifi_networks: list["WifiNetwork"] = Field(default_factory=list, max_length=20)
     manager_membership_id: UUID | None = None
 
     @field_validator("code")
@@ -82,6 +83,7 @@ class UpdateBranchRequest(BaseModel):
     geofence_radius_m: int | None = Field(default=None, ge=20, le=10000)
     timezone: str | None = Field(default=None, min_length=1, max_length=64)
     working_hours: dict[str, Any] | None = None
+    wifi_networks: list["WifiNetwork"] | None = Field(default=None, max_length=20)
     manager_membership_id: UUID | None = None
     is_active: bool | None = None
 
@@ -133,6 +135,7 @@ class BranchResponse(BaseModel):
     geofence_radius_m: int
     timezone: str
     working_hours: dict[str, Any]
+    wifi_networks: list["WifiNetwork"]
     manager_membership_id: UUID | None
     is_active: bool
     version: int
@@ -145,6 +148,25 @@ class BranchListResponse(BaseModel):
     page: int
     page_size: int
     total: int
+
+
+class WifiNetwork(BaseModel):
+    """An access point authorized for Wi-Fi attendance at a branch."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ssid: str = Field(min_length=1, max_length=128)
+    bssid: str = Field(pattern=r"^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
+
+    @field_validator("ssid")
+    @classmethod
+    def strip_ssid(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("bssid")
+    @classmethod
+    def normalize_bssid(cls, value: str) -> str:
+        return value.strip().lower()
 
 
 class BranchSupervisorsRequest(BaseModel):
@@ -253,6 +275,13 @@ class BranchAssignmentResponse(BaseModel):
 
 
 def branch_response(branch: Branch) -> BranchResponse:
+    working_hours = branch.working_hours or {}
+    configured_wifi = working_hours.get("wifi_networks", [])
+    wifi_networks = [
+        WifiNetwork.model_validate(item)
+        for item in configured_wifi
+        if isinstance(item, dict)
+    ]
     return BranchResponse(
         id=branch.id,
         code=branch.code,
@@ -263,7 +292,8 @@ def branch_response(branch: Branch) -> BranchResponse:
         longitude=branch.longitude,
         geofence_radius_m=branch.geofence_radius_m,
         timezone=branch.timezone,
-        working_hours=branch.working_hours,
+        working_hours=working_hours,
+        wifi_networks=wifi_networks,
         manager_membership_id=branch.manager_membership_id,
         is_active=branch.is_active,
         version=branch.version,
@@ -414,7 +444,11 @@ async def create_branch(
     await require_permission(session, context, Permission.BRANCHES_MANAGE)
     await require_unrestricted_scope(session, context)
     subscription = await active_subscription(session, context.company_id)
-    branch_limit = plan_limit(subscription[1], "branches") if subscription else 0
+    branch_limit = (
+        plan_limit(subscription[1], "branches", subscription[0].limits_override)
+        if subscription
+        else 0
+    )
     branch_count = int(
         await session.scalar(
             select(func.count())
@@ -455,7 +489,12 @@ async def create_branch(
             title="Branch manager role is invalid",
             detail="The branch manager must have the owner or manager role.",
         )
-    branch = Branch(company_id=context.company_id, **payload.model_dump())
+    branch_data = payload.model_dump(exclude={"wifi_networks"})
+    branch_data["working_hours"] = {
+        **(payload.working_hours or {}),
+        "wifi_networks": [item.model_dump() for item in payload.wifi_networks],
+    }
+    branch = Branch(company_id=context.company_id, **branch_data)
     session.add(branch)
     await session.flush()
     session.add(
@@ -717,6 +756,16 @@ async def update_branch(
             detail="Reload the branch before saving again.",
         )
     changes = payload.model_dump(exclude_unset=True, exclude={"version"})
+    wifi_networks = changes.pop("wifi_networks", None)
+    if wifi_networks is not None:
+        supplied_hours = changes.get("working_hours")
+        current_hours = dict(
+            supplied_hours
+            if isinstance(supplied_hours, dict)
+            else (branch.working_hours or {})
+        )
+        current_hours["wifi_networks"] = wifi_networks
+        changes["working_hours"] = current_hours
     if "code" in changes:
         await ensure_unique_branch_code(session, context.company_id, changes["code"], branch.id)
     if "manager_membership_id" in changes and not await tenant_membership_exists(

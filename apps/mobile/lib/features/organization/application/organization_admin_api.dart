@@ -125,6 +125,56 @@ class OrganizationAdminApi {
     );
     return OrganizationGroup.fromJson(response.data ?? <String, dynamic>{});
   }
+
+  Future<List<AdminBranch>> listBranches(AuthSession session) async {
+    final response = await dio.get<dynamic>(
+      '/branches?page_size=100',
+      options: _options(session),
+    );
+    return _items(
+      response.data,
+    ).map(AdminBranch.fromJson).toList(growable: false);
+  }
+
+  Future<void> deleteBranch(AuthSession session, AdminBranch branch) async {
+    await dio.delete<dynamic>(
+      '/branches/${branch.id}?version=${branch.version}',
+      options: _options(session),
+    );
+  }
+
+  Future<AdminBranch> updateBranchWifi(
+    AuthSession session,
+    AdminBranch branch,
+    List<AdminWifiNetwork> networks,
+  ) async {
+    final response = await dio.patch<Map<String, dynamic>>(
+      '/branches/${branch.id}',
+      options: _options(session),
+      data: <String, dynamic>{
+        'version': branch.version,
+        'wifi_networks': networks.map((item) => item.toJson()).toList(),
+      },
+    );
+    return AdminBranch.fromJson(response.data ?? <String, dynamic>{});
+  }
+
+  Future<List<AdminShift>> listShifts(AuthSession session) async {
+    final response = await dio.get<dynamic>(
+      '/shifts?page_size=100',
+      options: _options(session),
+    );
+    return _items(
+      response.data,
+    ).map(AdminShift.fromJson).toList(growable: false);
+  }
+
+  Future<void> deleteShift(AuthSession session, AdminShift shift) async {
+    await dio.delete<dynamic>(
+      '/shifts/${shift.id}?version=${shift.version}',
+      options: _options(session),
+    );
+  }
 }
 
 List<Map<String, dynamic>> _items(dynamic data) {
@@ -246,6 +296,118 @@ class OrganizationGroup extends NamedOption {
   final List<String> membershipIds;
 }
 
+class AdminBranch extends NamedOption {
+  const AdminBranch({
+    required super.id,
+    required super.name,
+    required this.code,
+    required this.fullAddress,
+    required this.latitude,
+    required this.longitude,
+    required this.geofenceRadiusM,
+    required this.wifiNetworks,
+    required this.version,
+  });
+
+  factory AdminBranch.fromJson(Map<String, dynamic> json) => AdminBranch(
+    id: json['id'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    code: json['code'] as String? ?? '',
+    fullAddress: json['full_address'] as String? ?? '',
+    latitude: '${json['latitude'] ?? ''}',
+    longitude: '${json['longitude'] ?? ''}',
+    geofenceRadiusM: json['geofence_radius_m'] as int? ?? 0,
+    wifiNetworks: _maps(
+      json['wifi_networks'],
+    ).map(AdminWifiNetwork.fromJson).toList(growable: false),
+    version: json['version'] as int? ?? 1,
+  );
+
+  final String code;
+  final String fullAddress;
+  final String latitude;
+  final String longitude;
+  final int geofenceRadiusM;
+  final List<AdminWifiNetwork> wifiNetworks;
+  final int version;
+}
+
+class AdminWifiNetwork {
+  const AdminWifiNetwork({required this.ssid, required this.bssid});
+
+  factory AdminWifiNetwork.fromJson(Map<String, dynamic> json) =>
+      AdminWifiNetwork(
+        ssid: json['ssid'] as String? ?? '',
+        bssid: json['bssid'] as String? ?? '',
+      );
+
+  final String ssid;
+  final String bssid;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'ssid': ssid.trim(),
+    'bssid': bssid.trim().toLowerCase(),
+  };
+}
+
+class AdminShift extends NamedOption {
+  const AdminShift({
+    required super.id,
+    required super.name,
+    required this.code,
+    required this.startTime,
+    required this.endTime,
+    required this.workingDays,
+    required this.locationPolicy,
+    required this.periods,
+    required this.version,
+  });
+
+  factory AdminShift.fromJson(Map<String, dynamic> json) {
+    final recurrence =
+        json['recurrence'] as Map<String, dynamic>? ?? <String, dynamic>{};
+    return AdminShift(
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      code: json['code'] as String? ?? '',
+      startTime: json['start_time'] as String? ?? '',
+      endTime: json['end_time'] as String? ?? '',
+      workingDays: _ints(json['working_days']),
+      locationPolicy:
+          recurrence['location_policy'] as String? ?? 'branch_required',
+      periods: _maps(recurrence['periods'])
+          .map(
+            (item) => ShiftPeriod(
+              startTime: item['start_time'] as String? ?? '',
+              endTime: item['end_time'] as String? ?? '',
+            ),
+          )
+          .toList(growable: false),
+      version: json['version'] as int? ?? 1,
+    );
+  }
+
+  final String code;
+  final String startTime;
+  final String endTime;
+  final List<int> workingDays;
+  final String locationPolicy;
+  final List<ShiftPeriod> periods;
+  final int version;
+}
+
+class ShiftPeriod {
+  const ShiftPeriod({required this.startTime, required this.endTime});
+
+  final String startTime;
+  final String endTime;
+}
+
 List<String> _strings(dynamic value) => (value as List<dynamic>? ?? <dynamic>[])
     .map((item) => '$item')
+    .toList(growable: false);
+
+List<int> _ints(dynamic value) => (value as List<dynamic>? ?? <dynamic>[])
+    .map((item) => item is int ? item : int.tryParse('$item'))
+    .whereType<int>()
     .toList(growable: false);

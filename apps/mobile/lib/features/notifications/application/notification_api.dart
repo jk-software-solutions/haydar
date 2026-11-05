@@ -41,6 +41,23 @@ class NotificationApi {
   Future<void> markAllRead(AuthSession session) =>
       dio.post<void>('/notifications/read-all', options: _auth(session));
 
+  Future<void> registerPushToken(
+    AuthSession session,
+    String token, {
+    String? appVersion,
+  }) async {
+    await dio.post<Map<String, dynamic>>(
+      '/notifications/push-tokens',
+      options: _auth(session),
+      data: <String, dynamic>{
+        'token': token,
+        'platform': 'android',
+        if (appVersion != null && appVersion.isNotEmpty)
+          'app_version': appVersion,
+      },
+    );
+  }
+
   Future<NotificationPreferences> preferences(AuthSession session) async {
     final response = await dio.get<Map<String, dynamic>>(
       '/notifications/preferences',
@@ -111,6 +128,7 @@ class AppNotification {
     required this.kind,
     required this.title,
     required this.body,
+    required this.actorName,
     required this.deepLink,
     required this.urgent,
     required this.readAt,
@@ -123,6 +141,7 @@ class AppNotification {
         kind: json['kind'] as String? ?? '',
         title: json['title'] as String? ?? '',
         body: json['body'] as String? ?? '',
+        actorName: json['actor_name'] as String?,
         deepLink: json['deep_link'] as String? ?? '/app',
         urgent: json['urgent'] as bool? ?? false,
         readAt: DateTime.tryParse(json['read_at'] as String? ?? ''),
@@ -133,6 +152,7 @@ class AppNotification {
   final String kind;
   final String title;
   final String body;
+  final String? actorName;
   final String deepLink;
   final bool urgent;
   final DateTime? readAt;

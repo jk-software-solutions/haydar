@@ -10,7 +10,7 @@ export default async function ForgotPasswordPage({
   return (
     <main className="portal-shell">
       <section className="portal-card">
-        <p className="foundation-eyebrow">HADIR | حاضر</p>
+        <p className="foundation-eyebrow">DawamTech | دوام تك</p>
         <h1>{ar ? "استعادة كلمة المرور" : "Reset your password"}</h1>
         <p>
           {ar

@@ -29,10 +29,12 @@ from app.models.identity import (
     MembershipDepartmentScope,
     MembershipGroupScope,
     MembershipRole,
+    User,
 )
 from app.models.organization import Branch, EmployeeGroupMembership, EmployeeProfile
 from app.models.workforce import Notification
 from app.services.idempotency import IdempotencyKey, begin_idempotency, complete_idempotency
+from app.services.notification_actor import membership_actor_name
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_session)]
@@ -75,6 +77,7 @@ class GeofenceExitResponse(BaseModel):
     id: UUID
     record_id: UUID
     membership_id: UUID
+    employee_name: str | None = None
     branch_id: UUID
     shift_id: UUID
     status: str
@@ -96,8 +99,14 @@ class GeofenceExitResponse(BaseModel):
     version: int
 
 
-def response(item: GeofenceExitEvent) -> GeofenceExitResponse:
-    return GeofenceExitResponse.model_validate(item, from_attributes=True)
+def response(
+    item: GeofenceExitEvent,
+    *,
+    employee_name: str | None = None,
+) -> GeofenceExitResponse:
+    result = GeofenceExitResponse.model_validate(item, from_attributes=True)
+    result.employee_name = employee_name
+    return result
 
 
 async def open_record(
@@ -198,6 +207,9 @@ async def notify_managers(
         if Permission.GEOFENCE_EXITS_VIEW.value
         in await effective_permission_codes(session, record.company_id, member_id)
     ]
+    employee_name = await membership_actor_name(
+        session, record.company_id, record.membership_id
+    )
     session.add_all(
         [
             Notification(
@@ -205,6 +217,7 @@ async def notify_managers(
                 membership_id=member_id,
                 kind="geofence_exit_unauthorized",
                 title="Unauthorized branch exit",
+                actor_name=employee_name,
                 body="An employee remained outside the branch geofence without permission.",
                 target_type="geofence_exit_event",
                 target_id=event.id,
@@ -450,13 +463,30 @@ async def list_geofence_exit_events(
             GeofenceExitEvent.detected_at
             < datetime.combine(date_to + timedelta(days=1), datetime.min.time(), UTC)
         )
-    items = await session.scalars(
-        select(GeofenceExitEvent)
+    rows = await session.execute(
+        select(GeofenceExitEvent, EmployeeProfile, User)
+        .join(
+            CompanyMembership,
+            (CompanyMembership.company_id == GeofenceExitEvent.company_id)
+            & (CompanyMembership.id == GeofenceExitEvent.membership_id),
+        )
+        .join(User, User.id == CompanyMembership.user_id)
+        .outerjoin(
+            EmployeeProfile,
+            (EmployeeProfile.company_id == GeofenceExitEvent.company_id)
+            & (EmployeeProfile.membership_id == GeofenceExitEvent.membership_id),
+        )
         .where(*criteria)
         .order_by(GeofenceExitEvent.detected_at.desc())
         .limit(2000)
     )
-    return [response(item) for item in items]
+    return [
+        response(
+            item,
+            employee_name=profile.display_name if profile else user.full_name or user.email,
+        )
+        for item, profile, user in rows.all()
+    ]
 
 
 @router.post("/{event_id}/review", response_model=GeofenceExitResponse)

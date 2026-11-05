@@ -12,7 +12,7 @@ export default async function ResetPasswordPage({
   return (
     <main className="portal-shell">
       <section className="portal-card">
-        <p className="foundation-eyebrow">HADIR | حاضر</p>
+        <p className="foundation-eyebrow">DawamTech | دوام تك</p>
         <h1>{ar ? "كلمة مرور جديدة" : "Create a new password"}</h1>
         <p>{ar ? "استخدم رابط الاستعادة الذي وصلك." : "Use the secure reset link delivered to you."}</p>
         <ResetPasswordForm locale={lang} token={query.token ?? ""} />

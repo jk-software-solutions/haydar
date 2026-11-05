@@ -22,6 +22,7 @@ from app.db.session import get_session
 from app.models.devices import AuditLog, Device
 from app.models.identity import Company, CompanyMembership, RefreshSession, User
 from app.models.organization import Department, EmployeeProfile
+from app.services.file_access import require_owned_attachment
 
 companies_router = APIRouter()
 employees_router = APIRouter()
@@ -32,6 +33,11 @@ class CompanySettingsResponse(BaseModel):
     id: UUID
     technical_name: str
     display_name: str
+    commercial_registration_number: str | None
+    unified_number: str | None
+    contact_phone: str | None
+    tax_number: str | None
+    logo_file_id: UUID | None
     status: str
     default_locale: str
     timezone: str
@@ -45,6 +51,11 @@ class UpdateCompanySettingsRequest(BaseModel):
 
     version: int = Field(ge=1)
     display_name: str | None = Field(default=None, min_length=2, max_length=160)
+    commercial_registration_number: str | None = Field(default=None, max_length=32)
+    unified_number: str | None = Field(default=None, max_length=32)
+    contact_phone: str | None = Field(default=None, max_length=32)
+    tax_number: str | None = Field(default=None, max_length=32)
+    logo_file_id: UUID | None = None
     default_locale: Literal["ar", "en"] | None = None
     timezone: str | None = Field(default=None, min_length=1, max_length=64)
     country_code: str | None = Field(
@@ -55,7 +66,14 @@ class UpdateCompanySettingsRequest(BaseModel):
     )
     attendance_biometric_policy: Literal["disabled", "optional", "required"] | None = None
 
-    @field_validator("display_name", "timezone")
+    @field_validator(
+        "display_name",
+        "timezone",
+        "commercial_registration_number",
+        "unified_number",
+        "contact_phone",
+        "tax_number",
+    )
     @classmethod
     def strip_required_text(cls, value: str | None) -> str | None:
         return value.strip() if value is not None else None
@@ -69,6 +87,10 @@ class UpdateCompanySettingsRequest(BaseModel):
     def reject_explicit_nulls(self) -> Self:
         for field_name in {
             "display_name",
+            "commercial_registration_number",
+            "unified_number",
+            "contact_phone",
+            "tax_number",
             "default_locale",
             "timezone",
             "country_code",
@@ -89,6 +111,7 @@ class EmployeeResponse(BaseModel):
     membership_status: str
     membership_version: int
     employee_number: str | None
+    avatar_file_id: UUID | None
     phone: str | None
     phone_login_enabled: bool
     job_title: str | None
@@ -121,6 +144,7 @@ class UpdateEmployeeRequest(BaseModel):
     preferred_locale: Literal["ar", "en"] | None = None
     attendance_enabled: bool | None = None
     department_id: UUID | None = None
+    avatar_file_id: UUID | None = None
 
     @field_validator("display_name")
     @classmethod
@@ -163,11 +187,23 @@ class UpdateEmployeeStatusRequest(BaseModel):
     reason: str = Field(min_length=3, max_length=1000)
 
 
+class UpdateMyAvatarRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
+    avatar_file_id: UUID | None = None
+
+
 def company_response(company: Company) -> CompanySettingsResponse:
     return CompanySettingsResponse(
         id=company.id,
         technical_name=company.technical_name,
         display_name=company.display_name,
+        commercial_registration_number=company.commercial_registration_number,
+        unified_number=company.unified_number,
+        contact_phone=company.contact_phone,
+        tax_number=company.tax_number,
+        logo_file_id=company.logo_file_id,
         status=company.status,
         default_locale=company.default_locale,
         timezone=company.timezone,
@@ -192,6 +228,7 @@ def employee_response(
         membership_status=membership.status,
         membership_version=membership.version,
         employee_number=profile.employee_number,
+        avatar_file_id=profile.avatar_file_id,
         phone=profile.phone,
         phone_login_enabled=(
             user.phone_e164 == profile.phone and user.phone_verified_at is not None
@@ -248,6 +285,15 @@ async def update_company_settings(
             title="Company settings changed",
             detail="Reload company settings before saving again.",
         )
+    if "logo_file_id" in payload.model_fields_set:
+        logo = await require_owned_attachment(session, context, payload.logo_file_id)
+        if logo is not None and not logo.content_type.startswith("image/"):
+            raise ProblemError(
+                status=415,
+                code="company_logo_must_be_image",
+                title="Company logo must be an image",
+                detail="Upload a PNG, JPEG, or WebP image for the company logo.",
+            )
     changes = payload.model_dump(exclude_unset=True, exclude={"version"})
     for field_name, value in changes.items():
         setattr(company, field_name, value)
@@ -287,6 +333,69 @@ async def get_my_employee_profile(
             title="Employee profile not found",
             detail="The employee profile does not exist in the current company.",
         )
+    return employee_response(*row)
+
+
+@employees_router.patch("/me/avatar", response_model=EmployeeResponse)
+async def update_my_employee_avatar(
+    payload: UpdateMyAvatarRequest,
+    auth_session: CurrentAuthSession,
+    session: DatabaseSession,
+) -> EmployeeResponse:
+    """Let an employee upload or remove their own profile photo."""
+    context = tenant_context(auth_session)
+    profile = await session.scalar(
+        select(EmployeeProfile)
+        .where(
+            EmployeeProfile.company_id == context.company_id,
+            EmployeeProfile.membership_id == context.membership.id,
+        )
+        .with_for_update()
+    )
+    if profile is None:
+        raise ProblemError(
+            status=status.HTTP_404_NOT_FOUND,
+            code="employee_not_found",
+            title="Employee profile not found",
+            detail="The employee profile does not exist in the current company.",
+        )
+    if profile.version != payload.version:
+        raise ProblemError(
+            status=status.HTTP_409_CONFLICT,
+            code="concurrency_conflict",
+            title="Employee profile changed",
+            detail="Reload the profile before changing the photo.",
+        )
+    avatar = await require_owned_attachment(
+        session, context, payload.avatar_file_id
+    )
+    if avatar is not None and not avatar.content_type.startswith("image/"):
+        raise ProblemError(
+            status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            code="avatar_must_be_image",
+            title="Profile photo must be an image",
+            detail="Choose a JPG, PNG, or WebP image for the employee photo.",
+        )
+    profile.avatar_file_id = payload.avatar_file_id
+    profile.version += 1
+    session.add(
+        AuditLog(
+            company_id=context.company_id,
+            actor_membership_id=context.membership.id,
+            action="employee.avatar.updated",
+            target_type="employee_profile",
+            target_id=profile.id,
+            details={"avatar_file_id": str(payload.avatar_file_id) if payload.avatar_file_id else None},
+        )
+    )
+    await session.commit()
+    row = (
+        await session.execute(
+            employee_statement(context.company_id).where(
+                EmployeeProfile.membership_id == context.membership.id
+            )
+        )
+    ).one()
     return employee_response(*row)
 
 
@@ -404,6 +513,17 @@ async def update_employee(
             detail="Reload the employee profile before saving again.",
         )
     changes = payload.model_dump(exclude_unset=True, exclude={"version"})
+    if "avatar_file_id" in changes:
+        avatar = await require_owned_attachment(
+            session, context, changes["avatar_file_id"]
+        )
+        if avatar is not None and not avatar.content_type.startswith("image/"):
+            raise ProblemError(
+                status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                code="avatar_must_be_image",
+                title="Profile photo must be an image",
+                detail="Choose a JPG, PNG, or WebP image for the employee photo.",
+            )
     department_id = changes.get("department_id")
     if department_id is not None and "department_id" in changes:
         await require_department_scope(session, context, department_id)
