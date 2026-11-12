@@ -24,6 +24,7 @@ class PushNotificationService {
   bool _initialized = false;
   String? _registeredToken;
   String? _registeredMembershipId;
+  DateTime? _lastRegistrationAttempt;
   AuthSession? _session;
   StreamSubscription<RemoteMessage>? _messageSubscription;
   StreamSubscription<String>? _tokenSubscription;
@@ -34,7 +35,15 @@ class PushNotificationService {
     if (_registeredMembershipId != session.membershipId) {
       _registeredMembershipId = session.membershipId;
       _registeredToken = null;
+      _lastRegistrationAttempt = null;
     }
+    if (_registeredToken != null) return;
+    final now = DateTime.now();
+    if (_lastRegistrationAttempt != null &&
+        now.difference(_lastRegistrationAttempt!) < const Duration(minutes: 2)) {
+      return;
+    }
+    _lastRegistrationAttempt = now;
 
     try {
       if (!_initialized) {
@@ -64,7 +73,8 @@ class PushNotificationService {
       }
 
       final token = await FirebaseMessaging.instance.getToken();
-      if (token != null && token.isNotEmpty) {
+      if (token != null && token.isNotEmpty &&
+          _session?.membershipId == session.membershipId) {
         await _register(session, token);
       }
     } on Object catch (_) {
@@ -78,7 +88,7 @@ class PushNotificationService {
       await _notifications.registerPushToken(session, token);
       _registeredToken = token;
     } on Object catch (_) {
-      // Retry on the next authenticated app start or token refresh.
+      // The authenticated workspace retries after the throttle interval.
     }
   }
 

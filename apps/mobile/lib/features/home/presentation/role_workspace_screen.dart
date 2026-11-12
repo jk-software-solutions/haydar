@@ -45,7 +45,6 @@ class _RoleWorkspaceScreenState extends ConsumerState<RoleWorkspaceScreen>
   int _taskBadgeCount = 0;
   int _requestBadgeCount = 0;
   Timer? _notificationTimer;
-  bool _pushRegistrationStarted = false;
   late final PushNotificationService _pushService;
 
   @override
@@ -81,10 +80,7 @@ class _RoleWorkspaceScreenState extends ConsumerState<RoleWorkspaceScreen>
   Future<void> _pollNotifications() async {
     final session = ref.read(authControllerProvider).session;
     if (session == null) return;
-    if (!_pushRegistrationStarted) {
-      _pushRegistrationStarted = true;
-      _pushService.register(session);
-    }
+    unawaited(_pushService.register(session));
     try {
       final count = await ref
           .read(notificationApiProvider)
@@ -301,28 +297,38 @@ class _RoleWorkspaceScreenState extends ConsumerState<RoleWorkspaceScreen>
           selectedIndex: selectedIndex,
         ),
       ),
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          NavigationBar(
-            selectedIndex: selectedIndex,
-            onDestinationSelected: (index) =>
-                setState(() => _selectedIndex = index),
-            destinations: destinations,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 3),
-            child: Text(
-              Localizations.localeOf(context).languageCode == 'ar'
-                  ? 'تطوير JK Software Solutions'
-                  : 'Developed by JK Software Solutions',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 9,
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            NavigationBar(
+              selectedIndex: selectedIndex,
+              onDestinationSelected: (index) =>
+                  setState(() => _selectedIndex = index),
+              destinations: destinations,
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Image.asset('assets/branding/jk_main_logo.png', height: 18),
+                  const SizedBox(width: 6),
+                  Text(
+                    Localizations.localeOf(context).languageCode == 'ar'
+                        ? 'تطوير JK Software Solutions'
+                        : 'Developed by JK Software Solutions',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
     return employeeExperience

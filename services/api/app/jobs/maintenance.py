@@ -199,11 +199,10 @@ async def expire_open_attendance(session: AsyncSession, now: datetime) -> int:
 
 
 async def create_attendance_reminders(session: AsyncSession, now: datetime) -> int:
-    """Notify employees who missed the start/grace window of a shift period.
+    """Notify once per workday when an employee misses a check-in window.
 
     The maintenance timer is the source of truth for this reminder. A
-    deterministic membership target prevents duplicate notifications when the
-    timer runs every minute.
+    The reminder lists every period of a split shift in one notification.
     """
     assignments = list(
         await session.scalars(
@@ -269,7 +268,12 @@ async def create_attendance_reminders(session: AsyncSession, now: datetime) -> i
         )
         if shift is None or local_now.date().weekday() not in shift.working_days:
             continue
-        for start_time, end_time in _shift_periods(shift):
+        periods = _shift_periods(shift)
+        schedule = "، ".join(
+            f"{start.strftime('%H:%M')}–{end.strftime('%H:%M')}"
+            for start, end in periods
+        )
+        for start_time, end_time in periods:
             local_start, local_end = _period_window(local_now.date(), start_time, end_time, zone)
             reminder_at = local_start + timedelta(minutes=shift.grace_period_minutes)
             if not (reminder_at <= local_now < reminder_at + timedelta(minutes=30)):
@@ -285,9 +289,8 @@ async def create_attendance_reminders(session: AsyncSession, now: datetime) -> i
             ) is not None:
                 continue
             reminder_body = (
-                "You have not checked in for this shift yet. "
-                "Please record your attendance or submit a permission request. "
-                f"Period start: {start_time.strftime('%H:%M')}."
+                f"وردياتك اليوم: {schedule}. "
+                "لم يُسجَّل حضورك للفترة الحالية؛ سجّل حضورك أو قدّم طلب استئذان."
             )
             already_reminded = await session.scalar(
                 select(Notification.id).where(
@@ -295,7 +298,6 @@ async def create_attendance_reminders(session: AsyncSession, now: datetime) -> i
                     Notification.membership_id == branch_assignment.membership_id,
                     Notification.kind == "attendance_reminder",
                     Notification.target_type == "attendance_period",
-                    Notification.body == reminder_body,
                     Notification.created_at >= datetime.combine(
                         local_now.date(), time.min, zone
                     ).astimezone(UTC),
@@ -308,7 +310,7 @@ async def create_attendance_reminders(session: AsyncSession, now: datetime) -> i
                     company_id=branch_assignment.company_id,
                     membership_id=branch_assignment.membership_id,
                     kind="attendance_reminder",
-                    title="Attendance reminder",
+                    title="تذكير الحضور وجدول الورديات",
                     actor_name="System / النظام",
                     body=reminder_body,
                     target_type="attendance_period",

@@ -6,7 +6,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Protocol
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -98,9 +98,44 @@ async def deliver_pending_notifications(
 ) -> dict[str, int]:
     provider = adapter or FirebasePushAdapter()
     now = datetime.now(UTC)
+    pending_target = (
+        select(PushDeviceToken.id)
+        .outerjoin(
+            NotificationDelivery,
+            and_(
+                NotificationDelivery.notification_id == Notification.id,
+                NotificationDelivery.push_token_id == PushDeviceToken.id,
+            ),
+        )
+        .where(
+            PushDeviceToken.company_id == Notification.company_id,
+            PushDeviceToken.membership_id == Notification.membership_id,
+            PushDeviceToken.is_active.is_(True),
+            or_(
+                NotificationDelivery.id.is_(None),
+                and_(
+                    NotificationDelivery.status != "delivered",
+                    or_(
+                        NotificationDelivery.next_attempt_at.is_(None),
+                        NotificationDelivery.next_attempt_at <= now,
+                    ),
+                ),
+            ),
+        )
+        .correlate(Notification)
+        .exists()
+    )
+    # Do not flood devices with historical notifications when a token first
+    # registers or the delivery queue is repaired after a long outage.
     notifications = list(
         await session.scalars(
-            select(Notification).order_by(Notification.created_at.asc()).limit(limit)
+            select(Notification)
+            .where(
+                pending_target,
+                Notification.created_at >= now - timedelta(minutes=30),
+            )
+            .order_by(Notification.created_at.desc())
+            .limit(limit)
         )
     )
     created = delivered = failed = blocked = 0

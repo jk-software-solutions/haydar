@@ -5,6 +5,7 @@ import { PointerEvent, WheelEvent, useEffect, useMemo, useRef, useState } from "
 import {
   coordinatesToWorldPixels,
   isSaudiShortAddress,
+  parseLocationCoordinates,
   roundedCoordinate,
   worldPixelsToCoordinates,
   type Coordinates,
@@ -165,8 +166,16 @@ export function LocationMapPicker({
 
   const runSearch = async () => {
     const query = searchQuery.trim();
+    const coordinates = parseLocationCoordinates(query);
+    if (coordinates) {
+      setSelected(coordinates);
+      setZoom(18);
+      setSearchResults([]);
+      setMessage(ar ? "تم تحديد الإحداثيات الدقيقة؛ راجع موضع الدبوس ثم احفظ الفرع." : "Precise coordinates selected; check the pin before saving the branch.");
+      return;
+    }
     if (query.length < 2) {
-      setMessage(ar ? "اكتب اسم مكان أو رمزاً وطنياً سعودياً." : "Type a place name or Saudi short address.");
+      setMessage(ar ? "اكتب اسم المكان أو إحداثياته." : "Type a place name or coordinates.");
       return;
     }
     setSearching(true);
@@ -185,7 +194,7 @@ export function LocationMapPicker({
       setMessage(
         results.length > 0
           ? (ar ? "اختر نتيجة من القائمة أو حرّك الخريطة." : "Choose a result or fine-tune on the map.")
-          : (ar ? "لم يتم العثور على نتيجة. جرّب اسم الشارع/المدينة أو اختر من الخريطة." : "No result found. Try street/city text or pick on the map."),
+          : (ar ? "لم يتم العثور على نتيجة. جرّب اسم الشارع والمدينة، أو الصق الإحداثيات من خرائط Google. الرمز الوطني القصير يحتاج خدمة العنوان الوطني الرسمية." : "No result found. Try street and city, or paste coordinates from Google Maps. Saudi short codes require the official National Address service."),
       );
     } catch {
       setMessage(ar ? "تعذر البحث الآن. اختر الموقع من الخريطة." : "Search is unavailable now. Pick the location on the map.");
@@ -276,8 +285,8 @@ export function LocationMapPicker({
           <strong>{ar ? "موقع الفرع على الخريطة" : "Branch location on map"}</strong>
           <span>
             {ar
-              ? "ابحث باسم المكان أو الرمز الوطني، ثم حرّك الخريطة بسلاسة حتى يصبح الدبوس فوق الموقع."
-              : "Search by place name or Saudi short address, then drag the map until the pin is on the site."}
+              ? "ابحث باسم المكان، أو الصق إحداثياته أو رابط خرائط Google، ثم راجع موضع الدبوس."
+              : "Search by place name, or paste coordinates or a Google Maps link, then check the pin."}
           </span>
         </div>
         <button type="button" onClick={useCurrentLocation}>
@@ -294,7 +303,7 @@ export function LocationMapPicker({
               void runSearch();
             }
           }}
-          placeholder={ar ? "مثال: GGDA3610 أو شارع الملك فهد" : "Example: GGDA3610 or King Fahd Road"}
+          placeholder={ar ? "شارع الملك فهد أو 24.7136, 46.6753" : "King Fahd Road or 24.7136, 46.6753"}
           value={searchQuery}
         />
         <button type="button" disabled={searching} onClick={() => void runSearch()}>

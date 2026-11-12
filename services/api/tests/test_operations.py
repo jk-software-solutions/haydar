@@ -696,6 +696,16 @@ async def test_tasks_leave_files_exports_and_tenant_isolation(
         },
     )
     assert push_token.status_code == 200
+    transferred_token = await db_client.post(
+        "/api/v1/notifications/push-tokens",
+        headers=auth_headers(other_owner),
+        json={
+            "token": "test-firebase-registration-token-00000001",
+            "platform": "android",
+        },
+    )
+    assert transferred_token.status_code == 200
+    assert transferred_token.json()["id"] != push_token.json()["id"]
     provider = await db_client.get(
         "/api/v1/notifications/provider-status", headers=auth_headers(owner)
     )

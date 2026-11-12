@@ -48,6 +48,17 @@ export function roundedCoordinate(value: number): string {
   return value.toFixed(6);
 }
 
+export function parseLocationCoordinates(value: string): Coordinates | null {
+  const query = value.trim();
+  const match = /^([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)$/.exec(query)
+    ?? /google\.[^/]+\/maps\/@([+-]?\d+(?:\.\d+)?),([+-]?\d+(?:\.\d+)?)/i.exec(query);
+  if (!match) return null;
+  const latitude = Number(match[1]);
+  const longitude = Number(match[2]);
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  return { latitude, longitude };
+}
+
 export function isSaudiShortAddress(value: string): boolean {
   return /^[A-Z]{4}\d{4}$/i.test(value.trim());
 }

@@ -35,6 +35,7 @@ void main() {
     expect(find.text('الواجهة الأساسية جاهزة'), findsOneWidget);
     expect(find.text('الخادم وقاعدة البيانات جاهزان'), findsOneWidget);
     expect(find.text('المتابعة لتسجيل الدخول'), findsOneWidget);
+    expect(find.text('تطوير JK Software Solutions'), findsOneWidget);
     expect(
       Directionality.of(tester.element(find.text('DawamTech | دوام تك'))),
       TextDirection.rtl,

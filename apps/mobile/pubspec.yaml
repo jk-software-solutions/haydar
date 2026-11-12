@@ -1,7 +1,7 @@
 name: haydar
 description: "HADIR role-aware employee attendance application."
 publish_to: 'none'
-version: 1.0.3+4
+version: 1.0.5+6
 
 environment:
   sdk: ^3.12.2

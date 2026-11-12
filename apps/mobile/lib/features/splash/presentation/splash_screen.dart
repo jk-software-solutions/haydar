@@ -124,6 +124,20 @@ class SplashScreen extends ConsumerWidget {
                           .select(Locale(selection.single));
                     },
                   ),
+                  const SizedBox(height: 20),
+                  Image.asset(
+                    'assets/branding/jk_main_logo.png',
+                    width: 112,
+                    semanticLabel: 'JK Software Solutions',
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    Localizations.localeOf(context).languageCode == 'ar'
+                        ? 'تطوير JK Software Solutions'
+                        : 'Developed by JK Software Solutions',
+                    style: textTheme.labelSmall,
+                    textAlign: TextAlign.center,
+                  ),
                 ],
               ),
             ),

@@ -4,6 +4,7 @@ import {
   coordinatesToWorldPixels,
   isSaudiShortAddress,
   normalizeLocationSearchQuery,
+  parseLocationCoordinates,
   roundedCoordinate,
   worldPixelsToCoordinates,
 } from "./location-map-utils";
@@ -31,5 +32,11 @@ describe("location map utilities", () => {
 
   it("keeps regular place search text normalized", () => {
     expect(normalizeLocationSearchQuery("  King   Fahd   Road  ")).toBe("King Fahd Road");
+  });
+
+  it("accepts precise coordinates or a copied Google Maps link", () => {
+    expect(parseLocationCoordinates("24.7136, 46.6753")).toEqual({ latitude: 24.7136, longitude: 46.6753 });
+    expect(parseLocationCoordinates("https://www.google.com/maps/@24.7136,46.6753,18z")).toEqual({ latitude: 24.7136, longitude: 46.6753 });
+    expect(parseLocationCoordinates("91, 46")).toBeNull();
   });
 });

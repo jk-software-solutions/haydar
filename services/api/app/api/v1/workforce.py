@@ -1781,12 +1781,14 @@ async def register_push_token(
     if item is not None and (
         item.company_id != context.company_id or item.membership_id != context.membership.id
     ):
-        raise ProblemError(
-            status=409,
-            code="push_token_registered_elsewhere",
-            title="Push token is already registered",
-            detail="Unregister this device from its previous account before registering again.",
-        )
+        # One device can sign in as different users. Keep historical delivery
+        # rows attached to the former owner, but revoke that token before
+        # registering it for the currently authenticated membership.
+        item.is_active = False
+        item.token = ""
+        item.token_hash = sha256(f"revoked:{item.id}".encode("utf-8")).hexdigest()
+        await session.flush()
+        item = None
     if item is None:
         item = PushDeviceToken(
             company_id=context.company_id,
