@@ -7,6 +7,7 @@ import '../../../app/localization/locale_controller.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_health.dart';
+import '../../../core/widgets/jk_attribution.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../auth/application/auth_controller.dart';
 
@@ -125,19 +126,7 @@ class SplashScreen extends ConsumerWidget {
                     },
                   ),
                   const SizedBox(height: 20),
-                  Image.asset(
-                    'assets/branding/jk_main_logo.png',
-                    width: 112,
-                    semanticLabel: 'JK Software Solutions',
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    Localizations.localeOf(context).languageCode == 'ar'
-                        ? 'تطوير JK Software Solutions'
-                        : 'Developed by JK Software Solutions',
-                    style: textTheme.labelSmall,
-                    textAlign: TextAlign.center,
-                  ),
+                  const JkAttribution(),
                 ],
               ),
             ),

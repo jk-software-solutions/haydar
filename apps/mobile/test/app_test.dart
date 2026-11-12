@@ -36,6 +36,7 @@ void main() {
     expect(find.text('الخادم وقاعدة البيانات جاهزان'), findsOneWidget);
     expect(find.text('المتابعة لتسجيل الدخول'), findsOneWidget);
     expect(find.text('تطوير JK Software Solutions'), findsOneWidget);
+    expect(find.text('+961 70 309 152'), findsOneWidget);
     expect(
       Directionality.of(tester.element(find.text('DawamTech | دوام تك'))),
       TextDirection.rtl,
@@ -76,6 +77,7 @@ void main() {
     expect(find.text('البريد الإلكتروني أو الهاتف'), findsOneWidget);
     expect(find.text('كلمة المرور'), findsOneWidget);
     expect(find.text('تطوير JK Software Solutions'), findsOneWidget);
+    expect(find.text('+961 70 309 152'), findsOneWidget);
 
     await tester.tap(find.text('لدي رمز دعوة'));
     await tester.pumpAndSettle();
@@ -137,6 +139,7 @@ void main() {
 
     expect(find.text('مساحة عمل مالك الشركة'), findsOneWidget);
     expect(find.text('تطوير JK Software Solutions'), findsOneWidget);
+    expect(find.text('+961 70 309 152'), findsOneWidget);
     expect(find.text('مرحباً، Jawad Owner'), findsOneWidget);
     expect(find.text('My Company'), findsOneWidget);
     expect(find.text('مالك الشركة'), findsOneWidget);

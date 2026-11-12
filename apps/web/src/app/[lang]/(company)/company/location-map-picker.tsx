@@ -74,6 +74,7 @@ export function LocationMapPicker({
   const [mapSize, setMapSize] = useState(DEFAULT_MAP_SIZE);
   const [isDragging, setIsDragging] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchCity, setSearchCity] = useState("");
   const [searchResults, setSearchResults] = useState<GeocodeResult[]>([]);
   const [searching, setSearching] = useState(false);
 
@@ -165,8 +166,10 @@ export function LocationMapPicker({
   };
 
   const runSearch = async () => {
-    const query = searchQuery.trim();
-    const coordinates = parseLocationCoordinates(query);
+    const place = searchQuery.trim();
+    const city = searchCity.trim();
+    const query = [place, city].filter(Boolean).join("، ");
+    const coordinates = parseLocationCoordinates(place);
     if (coordinates) {
       setSelected(coordinates);
       setZoom(18);
@@ -194,7 +197,7 @@ export function LocationMapPicker({
       setMessage(
         results.length > 0
           ? (ar ? "اختر نتيجة من القائمة أو حرّك الخريطة." : "Choose a result or fine-tune on the map.")
-          : (ar ? "لم يتم العثور على نتيجة. جرّب اسم الشارع والمدينة، أو الصق الإحداثيات من خرائط Google. الرمز الوطني القصير يحتاج خدمة العنوان الوطني الرسمية." : "No result found. Try street and city, or paste coordinates from Google Maps. Saudi short codes require the official National Address service."),
+          : (ar ? "لم نجد هذا المكان. جرّب اسم المدينة وحده ثم قرّب الخريطة، أو الصق إحداثيات الموقع. الرمز الوطني القصير يحتاج الخدمة الرسمية." : "No place found. Try the city alone and zoom in, or paste coordinates. Saudi short codes require the official service."),
       );
     } catch {
       setMessage(ar ? "تعذر البحث الآن. اختر الموقع من الخريطة." : "Search is unavailable now. Pick the location on the map.");
@@ -285,8 +288,8 @@ export function LocationMapPicker({
           <strong>{ar ? "موقع الفرع على الخريطة" : "Branch location on map"}</strong>
           <span>
             {ar
-              ? "ابحث باسم المكان، أو الصق إحداثياته أو رابط خرائط Google، ثم راجع موضع الدبوس."
-              : "Search by place name, or paste coordinates or a Google Maps link, then check the pin."}
+              ? "اكتب المدينة ثم الشارع أو اسم المكان. يمكنك أيضًا لصق الإحداثيات أو رابط خرائط Google؛ راجع الدبوس قبل الحفظ."
+              : "Enter the city, then the street or place. You can also paste coordinates or a Google Maps link; verify the pin before saving."}
           </span>
         </div>
         <button type="button" onClick={useCurrentLocation}>
@@ -295,7 +298,19 @@ export function LocationMapPicker({
       </div>
       <div className="location-search">
         <input
-          aria-label={ar ? "البحث عن موقع أو رمز وطني سعودي" : "Search place or Saudi short address"}
+          aria-label={ar ? "المدينة" : "City"}
+          onChange={(event) => setSearchCity(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void runSearch();
+            }
+          }}
+          placeholder={ar ? "المدينة، مثل الرياض" : "City, e.g. Riyadh"}
+          value={searchCity}
+        />
+        <input
+          aria-label={ar ? "الشارع أو المكان أو إحداثيات الموقع" : "Street, place, or coordinates"}
           onChange={(event) => setSearchQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
@@ -303,7 +318,7 @@ export function LocationMapPicker({
               void runSearch();
             }
           }}
-          placeholder={ar ? "شارع الملك فهد أو 24.7136, 46.6753" : "King Fahd Road or 24.7136, 46.6753"}
+          placeholder={ar ? "الشارع أو المكان (اختياري)، أو 24.7136, 46.6753" : "Street or place (optional), or 24.7136, 46.6753"}
           value={searchQuery}
         />
         <button type="button" disabled={searching} onClick={() => void runSearch()}>

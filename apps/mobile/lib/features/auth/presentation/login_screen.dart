@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../core/widgets/jk_attribution.dart';
 import '../application/auth_controller.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -210,18 +211,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       opacity: 0.7,
                       child: Column(
                         children: <Widget>[
-                          Image.asset(
-                            'assets/branding/jk_main_logo.png',
-                            width: 132,
-                            semanticLabel: 'JK Software Solutions',
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            Localizations.localeOf(context).languageCode == 'ar'
-                                ? 'تطوير JK Software Solutions'
-                                : 'Developed by JK Software Solutions',
-                            style: textTheme.labelSmall,
-                          ),
+                          const JkAttribution(),
                         ],
                       ),
                     ),

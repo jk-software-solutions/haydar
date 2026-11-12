@@ -11,6 +11,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../app/localization/locale_controller.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/notifications/push_notification_service.dart';
+import '../../../core/widgets/jk_attribution.dart';
 import '../../auth/application/auth_api.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../attendance/presentation/attendance_screen.dart';
@@ -308,24 +309,9 @@ class _RoleWorkspaceScreenState extends ConsumerState<RoleWorkspaceScreen>
                   setState(() => _selectedIndex = index),
               destinations: destinations,
             ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Image.asset('assets/branding/jk_main_logo.png', height: 18),
-                  const SizedBox(width: 6),
-                  Text(
-                    Localizations.localeOf(context).languageCode == 'ar'
-                        ? 'تطوير JK Software Solutions'
-                        : 'Developed by JK Software Solutions',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
-              ),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 4),
+              child: JkAttribution(compact: true),
             ),
           ],
         ),
