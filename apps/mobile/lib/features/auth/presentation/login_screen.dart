@@ -205,6 +205,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                       ),
                     ],
+                    const SizedBox(height: 28),
+                    Opacity(
+                      opacity: 0.7,
+                      child: Column(
+                        children: <Widget>[
+                          Image.asset(
+                            'assets/branding/jk_main_logo.png',
+                            width: 132,
+                            semanticLabel: 'JK Software Solutions',
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            Localizations.localeOf(context).languageCode == 'ar'
+                                ? 'تطوير JK Software Solutions'
+                                : 'Developed by JK Software Solutions',
+                            style: textTheme.labelSmall,
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),

@@ -301,11 +301,28 @@ class _RoleWorkspaceScreenState extends ConsumerState<RoleWorkspaceScreen>
           selectedIndex: selectedIndex,
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: selectedIndex,
-        onDestinationSelected: (index) =>
-            setState(() => _selectedIndex = index),
-        destinations: destinations,
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          NavigationBar(
+            selectedIndex: selectedIndex,
+            onDestinationSelected: (index) =>
+                setState(() => _selectedIndex = index),
+            destinations: destinations,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 3),
+            child: Text(
+              Localizations.localeOf(context).languageCode == 'ar'
+                  ? 'تطوير JK Software Solutions'
+                  : 'Developed by JK Software Solutions',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 9,
+              ),
+            ),
+          ),
+        ],
       ),
     );
     return employeeExperience

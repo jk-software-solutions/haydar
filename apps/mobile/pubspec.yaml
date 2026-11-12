@@ -34,6 +34,8 @@ dev_dependencies:
 flutter:
   generate: true
   uses-material-design: true
+  assets:
+    - assets/branding/jk_main_logo.png
 
 flutter_launcher_icons:
   android: true

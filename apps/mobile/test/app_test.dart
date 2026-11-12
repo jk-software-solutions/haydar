@@ -74,6 +74,7 @@ void main() {
     expect(find.text('تسجيل الدخول'), findsWidgets);
     expect(find.text('البريد الإلكتروني أو الهاتف'), findsOneWidget);
     expect(find.text('كلمة المرور'), findsOneWidget);
+    expect(find.text('تطوير JK Software Solutions'), findsOneWidget);
 
     await tester.tap(find.text('لدي رمز دعوة'));
     await tester.pumpAndSettle();
@@ -134,6 +135,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('مساحة عمل مالك الشركة'), findsOneWidget);
+    expect(find.text('تطوير JK Software Solutions'), findsOneWidget);
     expect(find.text('مرحباً، Jawad Owner'), findsOneWidget);
     expect(find.text('My Company'), findsOneWidget);
     expect(find.text('مالك الشركة'), findsOneWidget);
