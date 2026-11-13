@@ -32,8 +32,8 @@ void main() {
 
     expect(find.text('DawamTech | دوام تك'), findsOneWidget);
     expect(find.text('حضور أوضح، وإدارة أسهل'), findsOneWidget);
-    expect(find.text('الواجهة الأساسية جاهزة'), findsOneWidget);
-    expect(find.text('الخادم وقاعدة البيانات جاهزان'), findsOneWidget);
+    expect(find.text('الواجهة الأساسية جاهزة'), findsNothing);
+    expect(find.text('الخادم وقاعدة البيانات جاهزان'), findsNothing);
     expect(find.text('المتابعة لتسجيل الدخول'), findsOneWidget);
     expect(find.text('تطوير JK Software Solutions'), findsOneWidget);
     expect(find.text('+961 70 309 152'), findsOneWidget);
@@ -55,7 +55,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Attendance, clearly managed'), findsOneWidget);
-    expect(find.text('Server and database are ready'), findsOneWidget);
+    expect(find.text('Server and database are ready'), findsNothing);
     expect(find.text('Continue to login'), findsOneWidget);
     expect(
       Directionality.of(tester.element(find.text('DawamTech | دوام تك'))),
